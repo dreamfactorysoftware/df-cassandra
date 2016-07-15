@@ -1,15 +1,28 @@
 <?php
 namespace DreamFactory\Core\Cassandra\Services;
 
+use DreamFactory\Core\Cassandra\Components\CassandraClient;
 use DreamFactory\Core\Components\DbSchemaExtras;
 use DreamFactory\Core\Components\RequireExtensions;
+use DreamFactory\Core\Contracts\SchemaInterface;
+use DreamFactory\Core\Exceptions\InternalServerErrorException;
 use DreamFactory\Core\Services\BaseNoSqlDbService;
 use DreamFactory\Core\Cassandra\Resources\Schema;
 use DreamFactory\Core\Cassandra\Resources\Table;
+use DreamFactory\Core\Contracts\CacheInterface;
+use DreamFactory\Core\Contracts\DbExtrasInterface;
+use Illuminate\Database\DatabaseManager;
+use DreamFactory\Core\Utility\Session;
 
 class Cassandra extends BaseNoSqlDbService implements CacheInterface, DbExtrasInterface
 {
     use DbSchemaExtras, RequireExtensions;
+
+    /** @type CassandraClient  */
+    protected $dbConn = null;
+    
+    /** @type SchemaInterface */
+    protected $schema = null;
 
     /**
      * @var array
@@ -27,6 +40,28 @@ class Cassandra extends BaseNoSqlDbService implements CacheInterface, DbExtrasIn
         ],
     ];
     
+    public function __construct(array $settings)
+    {
+        parent::__construct($settings);
+
+        $config = array_get($settings, 'config');
+        $config = (empty($config) ? [] : (!is_array($config) ? [$config] : $config));
+        Session::replaceLookups($config, true);
+        $config['driver'] = 'cassandra';
+
+        if(empty($config)){
+            throw new InternalServerErrorException('No service configuration found for Cassandra.');
+        }
+
+        // add config to global for reuse, todo check existence and update?
+        config(['database.connections.service.' . $this->name => $config]);
+        /** @type DatabaseManager $db */
+        $db = app('db');
+        $this->dbConn = $db->connection('service.' . $this->name);
+        //$this->dbConn = new CassandraClient($config);
+        //$this->schema = new \DreamFactory\Core\Cassandra\Database\Schema\Schema($this->dbConn);
+    }
+
     public function getTableNames($schema = null, $refresh = false, $use_alias = false)
     {
         // TODO: Implement getTableNames() method.

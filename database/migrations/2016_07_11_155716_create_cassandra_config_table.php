@@ -19,7 +19,7 @@ class CreateCassandraConfigTable extends Migration
                 $t->integer('service_id')->unsigned()->primary();
                 $t->foreign('service_id')->references('id')->on('service')->onDelete('cascade');
                 $t->string('hosts');
-                $t->string('port')->nullable();
+                $t->integer('port')->nullable();
                 $t->string('username')->nullable();
                 $t->longText('password')->nullable();
                 $t->string('keyspace');
