@@ -5,10 +5,20 @@ namespace DreamFactory\Core\Cassandra\Components;
 class Connection extends \Illuminate\Database\Connection
 {
     /** @type CassandraClient */
-    protected $connection;
+    protected $client;
 
     public function __construct(array $config)
     {
-        $this->connection = new CassandraClient($config);
+        $this->client = new CassandraClient($config);
+    }
+
+    public function getClient()
+    {
+        return $this->client;
+    }
+
+    public function getSession()
+    {
+        return $this->client->getSession();
     }
 }

@@ -1,7 +1,7 @@
 <?php
 namespace DreamFactory\Core\Cassandra\Services;
 
-use DreamFactory\Core\Cassandra\Components\CassandraClient;
+use DreamFactory\Core\Cassandra\Components\Connection;
 use DreamFactory\Core\Components\DbSchemaExtras;
 use DreamFactory\Core\Components\RequireExtensions;
 use DreamFactory\Core\Contracts\SchemaInterface;
@@ -13,12 +13,13 @@ use DreamFactory\Core\Contracts\CacheInterface;
 use DreamFactory\Core\Contracts\DbExtrasInterface;
 use Illuminate\Database\DatabaseManager;
 use DreamFactory\Core\Utility\Session;
+use DreamFactory\Core\Database\Schema\TableSchema;
 
 class Cassandra extends BaseNoSqlDbService implements CacheInterface, DbExtrasInterface
 {
     use DbSchemaExtras, RequireExtensions;
 
-    /** @type CassandraClient  */
+    /** @type Connection  */
     protected $dbConn = null;
     
     /** @type SchemaInterface */
@@ -58,13 +59,56 @@ class Cassandra extends BaseNoSqlDbService implements CacheInterface, DbExtrasIn
         /** @type DatabaseManager $db */
         $db = app('db');
         $this->dbConn = $db->connection('service.' . $this->name);
-        //$this->dbConn = new CassandraClient($config);
-        //$this->schema = new \DreamFactory\Core\Cassandra\Database\Schema\Schema($this->dbConn);
+        $this->schema = new \DreamFactory\Core\Cassandra\Database\Schema\Schema($this->dbConn);
     }
 
+    /**
+     * @throws \Exception
+     * @return Connection
+     */
+    public function getConnection()
+    {
+        if (!isset($this->dbConn)) {
+            throw new InternalServerErrorException('Database connection has not been initialized.');
+        }
+
+        return $this->dbConn;
+    }
+
+    /**
+     * @throws \Exception
+     * @return SchemaInterface
+     */
+    public function getSchema()
+    {
+        if (!isset($this->schema)) {
+            throw new InternalServerErrorException('Database schema extension has not been initialized.');
+        }
+
+        return $this->schema;
+    }
+
+    /**
+     * @param null $schema
+     * @param bool $refresh
+     * @param bool $use_alias
+     *
+     * @return array|TableSchema[]|mixed
+     */
     public function getTableNames($schema = null, $refresh = false, $use_alias = false)
     {
-        // TODO: Implement getTableNames() method.
+        /** @type TableSchema[] $tables */
+        $tables = $this->schema->getTableNames($schema, true, $refresh);
+        if ($use_alias) {
+            $temp = []; // reassign index to alias
+            foreach ($tables as $table) {
+                $temp[strtolower($table->getName(true))] = $table;
+            }
+
+            return $temp;
+        }
+
+        return $tables;
     }
     
     public function refreshTableCache()
