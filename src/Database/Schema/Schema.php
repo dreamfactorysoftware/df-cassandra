@@ -1,17 +1,119 @@
 <?php
 namespace DreamFactory\Core\Cassandra\Database\Schema;
 
-use DreamFactory\Core\Cassandra\Components\Connection;
+use DreamFactory\Core\Cassandra\Database\CassandraConnection;
 use DreamFactory\Core\Database\Schema\TableSchema;
+use DreamFactory\Core\Database\Schema\ColumnSchema;
 
 class Schema extends \DreamFactory\Core\Database\Schema\Schema
 {
-    /** @var  Connection */
+    /** @var  CassandraConnection  */
     protected $connection;
-    
+
+    /**
+     * @inheritdoc
+     */
     protected function loadTable(TableSchema $table)
     {
-        // TODO: Implement loadTable() method.
+        $cTable = $this->connection->getClient()->getTable($table->name);
+        $columns = $cTable->columns();
+        $primaryKeys = $cTable->primaryKey();
+        $pkNames = [];
+        foreach($primaryKeys as $pk){
+            $pkNames[] = $pk->name();
+        }
+
+        if (!empty($columns)) {
+            foreach ($columns as $name => $column) {
+                $c = new ColumnSchema([
+                    'name' => $name,
+                    'isPrimaryKey' => (in_array($name, $pkNames))? true : false,
+                    'allowNull' => true,
+                    'type' => $column->type()->name(),
+                    'dbType' => $column->type()->name(),
+
+                ]);
+                $table->addColumn($c);
+            }
+        }
+
+        return $table;
+    }
+
+    /**
+     * @param ColumnSchema $field
+     * @param bool         $as_quoted_string
+     *
+     * @return \Illuminate\Database\Query\Expression|string
+     */
+    public function parseFieldForFilter(ColumnSchema $field, $as_quoted_string = false)
+    {
+        return $field->name;
+//        switch ($field->dbType) {
+//            case null:
+//                return DB::raw($field->getDbFunction());
+//        }
+//
+//        return ($as_quoted_string) ? $field->rawName : $field->name;
+    }
+
+    /**
+     * @param \DreamFactory\Core\Database\Schema\ColumnSchema $column
+     *
+     * @return array
+     */
+    public function getPdoBinding(ColumnSchema $column)
+    {
+        switch ($column->dbType) {
+            case null:
+                $type = $column->getDbFunctionType();
+                $pdoType = $this->extractPdoType($type);
+                $phpType = $type;
+                break;
+            default:
+                $pdoType = ($column->allowNull) ? null : $column->pdoType;
+                $phpType = $column->phpType;
+                break;
+        }
+
+        return ['name' => $column->getName(true), 'pdo_type' => $pdoType, 'php_type' => $phpType];
+    }
+
+    /**
+     * @param $value
+     * @param $field_info
+     *
+     * @return mixed
+     */
+    public function parseValueForSet($value, $field_info)
+    {
+        switch ($field_info->dbType){
+            case 'int':
+                return intval($value);
+            default:
+                return $value;
+        }
+    }
+
+    /**
+     * @param ColumnSchema $field
+     * @param bool         $as_quoted_string
+     *
+     * @return \Illuminate\Database\Query\Expression|string
+     */
+    public function parseFieldForSelect(ColumnSchema $field, $as_quoted_string = false)
+    {
+        switch ($field->dbType) {
+            //case null:
+            //    return DB::raw($field->getDbFunction() . ' AS ' . $this->quoteColumnName($field->getName(true)));
+            default :
+                $out = ($as_quoted_string) ? $field->rawName : $field->name;
+                if (!empty($field->alias)) {
+                    $out .= ' AS ' . $field->alias;
+                }
+
+                return $out;
+        }
     }
 
     /**
@@ -28,18 +130,70 @@ class Schema extends \DreamFactory\Core\Database\Schema\Schema
         $outTables = [];
         $client = $this->connection->getClient();
         $tables = $client->listTables();
-        $schema = $client->getKeyspace();
+        $schemaName = $client->getKeyspace()->name();
 
         foreach ($tables as $table) {
             $name = array_get($table, 'table_name');
+            $cTable = $client->getTable($name);
+            $primaryKey = array_get($cTable->primaryKey(), 0);
             $outTables[strtolower($name)] = new TableSchema([
-                'schemaName' => $schema,
+                'schemaName' => $schemaName,
                 'tableName'  => $name,
                 'name'       => $name,
-                'primaryKey' => '_id',
+                'primaryKey' => $primaryKey->name()
             ]);
         }
 
         return $outTables;
+    }
+
+    /**
+     * @param array $info
+     *
+     * @return string
+     * @throws \Exception
+     */
+    protected function buildColumnDefinition(array $info)
+    {
+        // This works for most except Oracle
+        $type = (isset($info['type'])) ? $info['type'] : null;
+        $typeExtras = (isset($info['type_extras'])) ? $info['type_extras'] : null;
+
+        $definition = $type . $typeExtras;
+
+        //$allowNull = (isset($info['allow_null'])) ? $info['allow_null'] : null;
+        //$definition .= ($allowNull) ? ' NULL' : ' NOT NULL';
+
+        $default = (isset($info['db_type'])) ? $info['db_type'] : null;
+        if (isset($default)) {
+            if (is_array($default)) {
+                $expression = (isset($default['expression'])) ? $default['expression'] : null;
+                if (null !== $expression) {
+                    $definition .= ' DEFAULT ' . $expression;
+                }
+            } else {
+                $default = $this->quoteValue($default);
+                $definition .= ' DEFAULT ' . $default;
+            }
+        }
+
+        $isUniqueKey = (isset($info['is_unique'])) ? filter_var($info['is_unique'], FILTER_VALIDATE_BOOLEAN) : false;
+        $isPrimaryKey =
+            (isset($info['is_primary_key'])) ? filter_var($info['is_primary_key'], FILTER_VALIDATE_BOOLEAN) : false;
+        if ($isPrimaryKey && $isUniqueKey) {
+            throw new \Exception('Unique and Primary designations not allowed simultaneously.');
+        }
+
+        if ($isUniqueKey) {
+            $definition .= ' UNIQUE KEY';
+        } elseif ($isPrimaryKey) {
+            $definition .= ' PRIMARY KEY';
+        }
+
+        if('string' === $definition){
+            $definition = 'text';
+        }
+
+        return $definition;
     }
 }

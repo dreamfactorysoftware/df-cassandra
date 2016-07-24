@@ -9,6 +9,8 @@ class CassandraClient
 
     protected $keyspace = null;
 
+    protected $schema = null;
+
     public function __construct(array $config)
     {
         $hosts = array_get($config, 'hosts');
@@ -23,6 +25,7 @@ class CassandraClient
 
         $cluster = \Cassandra::cluster()
                         ->withContactPoints($hosts)
+                        ->withPersistentSessions(true)
                         ->withPort($port);
 
         if(!empty($username) && !empty($password)){
@@ -30,7 +33,8 @@ class CassandraClient
         }
 
         $this->session = $cluster->build()->connect($keyspace);
-        $this->keyspace = $keyspace;
+        $this->schema = $this->session->schema();
+        $this->keyspace = $this->schema->keyspace($keyspace);
     }
     
     public function getSession()
@@ -43,16 +47,57 @@ class CassandraClient
         return $this->keyspace;
     }
 
+    public function getSchema()
+    {
+        return $this->schema;
+    }
+
     public function listTables()
     {
-        //$statement = new \Cassandra\SimpleStatement("select table_name from system_schema.tables where keyspace_name = 'df2'");
-        /** @noinspection PhpUndefinedNamespaceInspection */
-        $statement = new \Cassandra\SimpleStatement(<<<CQL
-select table_name from system_schema.tables where keyspace_name = '$this->keyspace'
-CQL
-);
-        $result = $this->session->execute($statement);
+        $tables = $this->keyspace->tables();
+        $out = [];
+        foreach($tables as $table){
+            $out[] = ['table_name' => $table->name()];
+        }
 
-        return $result;
+        return $out;
+    }
+
+    public function getTable($name)
+    {
+        return $this->keyspace->table($name);
+    }
+
+    public function prepareStatement($cql)
+    {
+        return new \Cassandra\SimpleStatement($cql);
+        //return $this->session->prepare($cql);
+    }
+
+    public function executeStatement($statement, array $options = [])
+    {
+        if(!empty($options)){
+            return $this->session->execute($statement, new \Cassandra\ExecutionOptions($options));
+        } else {
+            return $this->session->execute($statement);
+        }
+    }
+
+    public function runQuery($cql, array $options = [])
+    {
+        $statement = $this->prepareStatement($cql);
+        $rows =  $this->executeStatement($statement, $options);
+
+        return static::rowsToArray($rows);
+    }
+
+    public static function rowsToArray($rows, array $options = [])
+    {
+        $array = [];
+        foreach($rows as $row){
+            $array[] = $row;
+        }
+
+        return $array;
     }
 }

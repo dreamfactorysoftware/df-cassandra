@@ -1,7 +1,7 @@
 <?php
 namespace DreamFactory\Core\Cassandra\Services;
 
-use DreamFactory\Core\Cassandra\Components\Connection;
+use DreamFactory\Core\Cassandra\Database\CassandraConnection;
 use DreamFactory\Core\Components\DbSchemaExtras;
 use DreamFactory\Core\Components\RequireExtensions;
 use DreamFactory\Core\Contracts\SchemaInterface;
@@ -19,7 +19,7 @@ class Cassandra extends BaseNoSqlDbService implements CacheInterface, DbExtrasIn
 {
     use DbSchemaExtras, RequireExtensions;
 
-    /** @type Connection  */
+    /** @type CassandraConnection  */
     protected $dbConn = null;
     
     /** @type SchemaInterface */
@@ -60,11 +60,14 @@ class Cassandra extends BaseNoSqlDbService implements CacheInterface, DbExtrasIn
         $db = app('db');
         $this->dbConn = $db->connection('service.' . $this->name);
         $this->schema = new \DreamFactory\Core\Cassandra\Database\Schema\Schema($this->dbConn);
+
+        $this->schema->setCache($this);
+        $this->schema->setExtraStore($this);
     }
 
     /**
      * @throws \Exception
-     * @return Connection
+     * @return CassandraConnection
      */
     public function getConnection()
     {

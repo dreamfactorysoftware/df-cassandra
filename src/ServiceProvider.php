@@ -1,7 +1,7 @@
 <?php
 namespace DreamFactory\Core\Cassandra;
 
-use DreamFactory\Core\Cassandra\Components\Connection;
+use DreamFactory\Core\Cassandra\Database\CassandraConnection;
 use DreamFactory\Core\Cassandra\Models\CassandraConfig;
 use DreamFactory\Core\Cassandra\Services\Cassandra;
 use DreamFactory\Core\Enums\ServiceTypeGroups;
@@ -14,7 +14,7 @@ class ServiceProvider extends \Illuminate\Support\ServiceProvider
     {
         $this->app->resolving('db', function ($db) {
             $db->extend('cassandra', function ($config) {
-                return new Connection($config);
+                return new CassandraConnection($config);
             });
         });
         
