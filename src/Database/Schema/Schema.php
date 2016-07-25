@@ -4,10 +4,11 @@ namespace DreamFactory\Core\Cassandra\Database\Schema;
 use DreamFactory\Core\Cassandra\Database\CassandraConnection;
 use DreamFactory\Core\Database\Schema\TableSchema;
 use DreamFactory\Core\Database\Schema\ColumnSchema;
+use DreamFactory\Core\Enums\DbSimpleTypes;
 
 class Schema extends \DreamFactory\Core\Database\Schema\Schema
 {
-    /** @var  CassandraConnection  */
+    /** @var  CassandraConnection */
     protected $connection;
 
     /**
@@ -19,18 +20,18 @@ class Schema extends \DreamFactory\Core\Database\Schema\Schema
         $columns = $cTable->columns();
         $primaryKeys = $cTable->primaryKey();
         $pkNames = [];
-        foreach($primaryKeys as $pk){
+        foreach ($primaryKeys as $pk) {
             $pkNames[] = $pk->name();
         }
 
         if (!empty($columns)) {
             foreach ($columns as $name => $column) {
                 $c = new ColumnSchema([
-                    'name' => $name,
-                    'isPrimaryKey' => (in_array($name, $pkNames))? true : false,
-                    'allowNull' => true,
-                    'type' => $column->type()->name(),
-                    'dbType' => $column->type()->name(),
+                    'name'         => $name,
+                    'isPrimaryKey' => (in_array($name, $pkNames)) ? true : false,
+                    'allowNull'    => true,
+                    'type'         => $column->type()->name(),
+                    'dbType'       => $column->type()->name(),
 
                 ]);
                 $table->addColumn($c);
@@ -87,7 +88,7 @@ class Schema extends \DreamFactory\Core\Database\Schema\Schema
      */
     public function parseValueForSet($value, $field_info)
     {
-        switch ($field_info->dbType){
+        switch ($field_info->dbType) {
             case 'int':
                 return intval($value);
             default:
@@ -190,10 +191,90 @@ class Schema extends \DreamFactory\Core\Database\Schema\Schema
             $definition .= ' PRIMARY KEY';
         }
 
-        if('string' === $definition){
+        if ('string' === $definition) {
             $definition = 'text';
         }
 
         return $definition;
+    }
+
+    /**
+     * Builds a SQL statement for changing the definition of a column.
+     *
+     * @param string $table      the table whose column is to be changed. The table name will be properly quoted by the
+     *                           method.
+     * @param string $column     the name of the column to be changed. The name will be properly quoted by the method.
+     * @param string $definition the new column type. The {@link getColumnType} method will be invoked to convert
+     *                           abstract column type (if any) into the physical one. Anything that is not recognized
+     *                           as abstract type will be kept in the generated SQL. For example, 'string' will be
+     *                           turned into 'varchar(255)', while 'string not null' will become 'varchar(255) not
+     *                           null'.
+     *
+     * @return string the SQL statement for changing the definition of a column.
+     * @since 1.1.6
+     */
+    public function alterColumn($table, $column, $definition)
+    {
+        if (null !== array_get($definition, 'new_name') &&
+            array_get($definition, 'name') !== array_get($definition, 'new_name')
+        ) {
+            $cql = 'ALTER TABLE ' .
+                $this->quoteTableName($table) .
+                ' RENAME ' .
+                $this->quoteColumnName($column) .
+                ' TO ' .
+                $this->quoteColumnName(array_get($definition, 'new_name'));
+        } else {
+            $cql = 'ALTER TABLE ' .
+                $this->quoteTableName($table) .
+                ' ALTER ' .
+                $this->quoteColumnName($column) .
+                ' TYPE ' .
+                $this->getColumnType($definition);
+        }
+
+        return $cql;
+    }
+
+    /**
+     * Builds and executes a SQL statement for dropping a DB table.
+     *
+     * @param string $table the table to be dropped. The name will be properly quoted by the method.
+     *
+     * @return integer 0 is always returned. See {@link http://php.net/manual/en/pdostatement.rowcount.php} for more
+     *                 information.
+     */
+    public function dropTable($table)
+    {
+        $sql = "DROP TABLE " . $this->quoteTableName($table);
+        $result = $this->connection->statement($sql);
+        $this->removeSchemaExtrasForTables($table);
+
+        //  Any changes here should refresh cached schema
+        $this->refresh();
+
+        return $result;
+    }
+
+    /**
+     * @param $table
+     * @param $column
+     *
+     * @return bool|int
+     */
+    public function dropColumn($table, $column)
+    {
+        $result = 0;
+        $tableInfo = $this->getTable($table);
+        if (($columnInfo = $tableInfo->getColumn($column)) && (DbSimpleTypes::TYPE_VIRTUAL !== $columnInfo->type)) {
+            $sql = "ALTER TABLE " . $this->quoteTableName($table) . " DROP " . $this->quoteColumnName($column);
+            $result = $this->connection->statement($sql);
+        }
+        $this->removeSchemaExtrasForFields($table, $column);
+
+        //  Any changes here should refresh cached schema
+        $this->refresh();
+
+        return $result;
     }
 }

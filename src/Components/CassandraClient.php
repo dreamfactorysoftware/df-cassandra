@@ -68,12 +68,22 @@ class CassandraClient
         return $this->keyspace->table($name);
     }
 
+    /**
+     * @param $cql
+     *
+     * @return \Cassandra\SimpleStatement
+     */
     public function prepareStatement($cql)
     {
         return new \Cassandra\SimpleStatement($cql);
-        //return $this->session->prepare($cql);
     }
 
+    /**
+     * @param       $statement
+     * @param array $options
+     *
+     * @return mixed
+     */
     public function executeStatement($statement, array $options = [])
     {
         if(!empty($options)){

@@ -116,6 +116,235 @@ class Table extends BaseNoSqlDbTableResource
     /**
      * {@inheritdoc}
      */
+    protected function addToTransaction(
+        $record = null,
+        $id = null,
+        $extras = null,
+        $rollback = false,
+        $continue = false,
+        $single = false
+    ){
+        if ($rollback) {
+            // sql transaction really only for rollback scenario, not batching
+            if (0 >= $this->connection->transactionLevel()) {
+                $this->connection->beginTransaction();
+            }
+        }
+
+        $ssFilters = array_get($extras, 'ss_filters');
+        $updates = array_get($extras, 'updates');
+        $idFields = array_get($extras, 'id_fields');
+        $needToIterate = ($single || !$continue || (1 < count($this->tableIdsInfo)));
+
+        $related = array_get($extras, 'related');
+        $requireMore = Scalar::boolval(array_get($extras, 'require_more')) || !empty($related);
+        //$allowRelatedDelete = Scalar::boolval(array_get($extras, 'allow_related_delete'));
+        //$relatedInfo = $this->describeTableRelated($this->transactionTable);
+
+        $builder = $this->connection->table($this->transactionTable);
+        if (!empty($id)) {
+            if (is_array($id)) {
+                foreach ($idFields as $name) {
+                    $builder->where($name, array_get($id, $name));
+                }
+            } else {
+                $name = array_get($idFields, 0);
+                $builder->where($name, $id);
+            }
+        }
+
+        $fields = array_get($extras, ApiOptions::FIELDS);
+        $fields = (empty($fields)) ? $idFields : $fields;
+
+        $serverFilter = $this->buildQueryStringFromData($ssFilters);
+        if (!empty($serverFilter)) {
+            Session::replaceLookups($serverFilter);
+            $params = [];
+            $filterString = $this->parseFilterString($serverFilter, $params, $this->tableFieldsInfo);
+            $builder->whereRaw($filterString, $params);
+        }
+
+        $out = [];
+        switch ($this->getAction()) {
+            case Verbs::POST:
+                // need the id back in the record
+                if (!empty($id)) {
+                    if (is_array($id)) {
+                        $record = array_merge($record, $id);
+                    } else {
+                        $record[array_get($idFields, 0)] = $id;
+                    }
+                }
+
+                //if (!empty($relatedInfo)) {
+                //    $this->updatePreRelations($record, $relatedInfo);
+                //}
+
+                $parsed = $this->parseRecord($record, $this->tableFieldsInfo, $ssFilters);
+                if (empty($parsed)) {
+                    throw new BadRequestException('No valid fields were found in record.');
+                }
+
+                if (empty($id) && (1 === count($this->tableIdsInfo)) && $this->tableIdsInfo[0]->autoIncrement) {
+                    $idName = $this->tableIdsInfo[0]->name;
+                    $id[$idName] = $builder->insertGetId($parsed, $idName);
+                    $record[$idName] = $id[$idName];
+                } else {
+                    if (!$builder->insert($parsed)) {
+                        throw new InternalServerErrorException("Record insert failed.");
+                    }
+                }
+
+//                if (!empty($relatedInfo)) {
+//                    $this->updatePostRelations(
+//                        $this->transactionTable,
+//                        $record,
+//                        $relatedInfo,
+//                        $allowRelatedDelete
+//                    );
+//                }
+
+                $idName =
+                    (isset($this->tableIdsInfo, $this->tableIdsInfo[0], $this->tableIdsInfo[0]->name))
+                        ? $this->tableIdsInfo[0]->name : null;
+                $out = (is_array($id)) ? $id : [$idName => $id];
+
+                // add via record, so batch processing can retrieve extras
+                if ($requireMore) {
+                    parent::addToTransaction($id);
+                }
+                break;
+
+            case Verbs::PUT:
+            case Verbs::MERGE:
+            case Verbs::PATCH:
+                if (!empty($updates)) {
+                    $record = $updates;
+                }
+
+//                if (!empty($relatedInfo)) {
+//                    $this->updatePreRelations($record, $relatedInfo);
+//                }
+                $parsed = $this->parseRecord($record, $this->tableFieldsInfo, $ssFilters, true);
+
+                // only update by ids can use batching, too complicated with ssFilters and related update
+//                if ( !$needToIterate && !empty( $updates ) )
+//                {
+//                    return parent::addToTransaction( null, $id );
+//                }
+
+                if (!empty($parsed)) {
+                    $rows = $builder->update($parsed);
+                    if (0 >= $rows) {
+                        // could have just not updated anything, or could be bad id
+                        $result = $this->runQuery(
+                            $this->transactionTable,
+                            $fields,
+                            $builder,
+                            $extras
+                        );
+                        if (empty($result)) {
+                            throw new NotFoundException("Record with identifier '" .
+                                print_r($id, true) .
+                                "' not found.");
+                        }
+                    }
+                }
+
+                if (!empty($relatedInfo)) {
+                    // need the id back in the record
+                    if (!empty($id)) {
+                        if (is_array($id)) {
+                            $record = array_merge($record, $id);
+                        } else {
+                            $record[array_get($idFields, 0)] = $id;
+                        }
+                    }
+//                    $this->updatePostRelations(
+//                        $this->transactionTable,
+//                        $record,
+//                        $relatedInfo,
+//                        $allowRelatedDelete
+//                    );
+                }
+
+                $idName =
+                    (isset($this->tableIdsInfo, $this->tableIdsInfo[0], $this->tableIdsInfo[0]->name))
+                        ? $this->tableIdsInfo[0]->name : null;
+                $out = (is_array($id)) ? $id : [$idName => $id];
+
+                // add via record, so batch processing can retrieve extras
+                if ($requireMore) {
+                    parent::addToTransaction($id);
+                }
+                break;
+
+            case Verbs::DELETE:
+                if (!$needToIterate) {
+                    return parent::addToTransaction(null, $id);
+                }
+
+                // add via record, so batch processing can retrieve extras
+                if ($requireMore) {
+                    $result = $this->runQuery(
+                        $this->transactionTable,
+                        $fields,
+                        $builder,
+                        $extras
+                    );
+                    if (empty($result)) {
+                        throw new NotFoundException("Record with identifier '" . print_r($id, true) . "' not found.");
+                    }
+
+                    $out = $result[0];
+                }
+
+                $rows = $builder->delete();
+                if (0 >= $rows) {
+                    if (empty($out)) {
+                        // could have just not updated anything, or could be bad id
+                        $result = $this->runQuery(
+                            $this->transactionTable,
+                            $fields,
+                            $builder,
+                            $extras
+                        );
+                        if (empty($result)) {
+                            throw new NotFoundException("Record with identifier '" .
+                                print_r($id, true) .
+                                "' not found.");
+                        }
+                    }
+                }
+
+                if (empty($out)) {
+                    $idName =
+                        (isset($this->tableIdsInfo, $this->tableIdsInfo[0], $this->tableIdsInfo[0]->name))
+                            ? $this->tableIdsInfo[0]->name : null;
+                    $out = (is_array($id)) ? $id : [$idName => $id];
+                }
+                break;
+
+            case Verbs::GET:
+                if (!$needToIterate) {
+                    return parent::addToTransaction(null, $id);
+                }
+
+                $result = $this->runQuery($this->transactionTable, $fields, $builder, $extras);
+                if (empty($result)) {
+                    throw new NotFoundException("Record with identifier '" . print_r($id, true) . "' not found.");
+                }
+
+                $out = $result[0];
+                break;
+        }
+
+        return $out;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
     protected function commitTransaction($extras = null)
     {
         if (empty($this->batchRecords) && empty($this->batchIds)) {
@@ -171,7 +400,7 @@ class Table extends BaseNoSqlDbTableResource
                 $fields = (empty($fields)) ? $idFields : $fields;
                 $result = $this->runQuery($this->transactionTable, $fields, $builder, $extras);
                 if (empty($result)) {
-                    throw new NotFoundException('No records were found using the given identifiers.');
+                    //throw new NotFoundException('No records were found using the given identifiers.');
                 }
 
                 $out = $result;

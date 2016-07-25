@@ -19,9 +19,9 @@ class Cassandra extends BaseNoSqlDbService implements CacheInterface, DbExtrasIn
 {
     use DbSchemaExtras, RequireExtensions;
 
-    /** @type CassandraConnection  */
+    /** @type CassandraConnection */
     protected $dbConn = null;
-    
+
     /** @type SchemaInterface */
     protected $schema = null;
 
@@ -40,7 +40,7 @@ class Cassandra extends BaseNoSqlDbService implements CacheInterface, DbExtrasIn
             'label'      => 'Table',
         ],
     ];
-    
+
     public function __construct(array $settings)
     {
         parent::__construct($settings);
@@ -50,7 +50,7 @@ class Cassandra extends BaseNoSqlDbService implements CacheInterface, DbExtrasIn
         Session::replaceLookups($config, true);
         $config['driver'] = 'cassandra';
 
-        if(empty($config)){
+        if (empty($config)) {
             throw new InternalServerErrorException('No service configuration found for Cassandra.');
         }
 
@@ -113,11 +113,10 @@ class Cassandra extends BaseNoSqlDbService implements CacheInterface, DbExtrasIn
 
         return $tables;
     }
-    
+
     public function refreshTableCache()
     {
         // TODO: Implement refreshTableCache() method.
     }
-    
-    
+
 }

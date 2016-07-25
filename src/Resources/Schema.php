@@ -27,7 +27,6 @@ class Schema extends BaseNoSqlDbSchemaResource
      */
     protected $schema = null;
 
-
     //*************************************************************************
     //	Methods
     //*************************************************************************
@@ -51,7 +50,7 @@ class Schema extends BaseNoSqlDbSchemaResource
      */
     public function describeTable($name, $refresh = false)
     {
-        $name = (is_array($name) ? array_get($name, 'name') :  $name);
+        $name = (is_array($name) ? array_get($name, 'name') : $name);
         if (empty($name)) {
             throw new BadRequestException('Table name can not be empty.');
         }
@@ -132,17 +131,56 @@ class Schema extends BaseNoSqlDbSchemaResource
 
         return $out;
     }
-    
+
+    /**
+     * {@inheritdoc}
+     */
     public function deleteTable($table, $check_empty = false)
     {
-        // TODO: Implement deleteTable() method.
+        if (empty($table)) {
+            throw new BadRequestException('Table name can not be empty.');
+        }
+
+        //  Does it exist
+        if (!$this->doesTableExist($table)) {
+            throw new NotFoundException("Table '$table' not found.");
+        }
+
+        try {
+            $this->schema->dropTable($table);
+        } catch (\Exception $ex) {
+            \Log::error('Exception dropping table: ' . $ex->getMessage());
+
+            throw $ex;
+        }
+
+        //  Any changes here should refresh cached schema
+        $this->refreshCachedTables();
     }
-    
+
+    /**
+     * {@inheritdoc}
+     */
     public function updateTable($table, $properties, $allow_delete_fields = false, $return_schema = false)
     {
-        // TODO: Implement updateTable() method.
+        $properties = (is_array($properties) ? $properties : []);
+        $properties['name'] = $table;
+
+        $tables = static::validateAsArray($properties, null, true, 'Bad data format in request.');
+
+        $result = $this->schema->updateSchema($tables, true, $allow_delete_fields);
+        $result = array_get($result, 0, []);
+
+        //  Any changes here should refresh cached schema
+        $this->refreshCachedTables();
+
+        if ($return_schema) {
+            return $this->describeTable($table);
+        }
+
+        return $result;
     }
-    
+
     public function createTable($table, $properties = [], $check_exist = false, $return_schema = false)
     {
         $properties = (is_array($properties) ? $properties : []);
@@ -160,5 +198,30 @@ class Schema extends BaseNoSqlDbSchemaResource
         }
 
         return $result;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function deleteField($table, $field)
+    {
+        if (empty($table)) {
+            throw new BadRequestException('Table name can not be empty.');
+        }
+
+        // does it already exist
+        if (!$this->doesTableExist($table)) {
+            throw new NotFoundException("A table with name '$table' does not exist in the database.");
+        }
+
+        try {
+            $this->schema->dropColumn($table, $field);
+        } catch (\Exception $ex) {
+            error_log($ex->getMessage());
+            throw $ex;
+        }
+
+        //  Any changes here should refresh cached schema
+        $this->refreshCachedTables();
     }
 }
