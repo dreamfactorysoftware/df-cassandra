@@ -5,8 +5,15 @@ use DreamFactory\Core\Exceptions\InternalServerErrorException;
 
 class CassandraClient
 {
+    /**
+     * DB session
+     * @var null
+     */
     protected $session = null;
 
+    /**
+     * @var null
+     */
     protected $keyspace = null;
 
     protected $schema = null;

@@ -23,6 +23,7 @@ class CreateCassandraConfigTable extends Migration
                 $t->string('username')->nullable();
                 $t->longText('password')->nullable();
                 $t->string('keyspace');
+                $t->text('options')->nullable();
             }
         );
     }
