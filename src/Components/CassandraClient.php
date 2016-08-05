@@ -5,15 +5,8 @@ use DreamFactory\Core\Exceptions\InternalServerErrorException;
 
 class CassandraClient
 {
-    /**
-     * DB session
-     * @var null
-     */
     protected $session = null;
 
-    /**
-     * @var null
-     */
     protected $keyspace = null;
 
     protected $schema = null;
@@ -25,9 +18,14 @@ class CassandraClient
         $keyspace = array_get($config, 'keyspace');
         $username = array_get($config, 'username');
         $password = array_get($config, 'password');
+        $ssl = $this->getSSLBuilder(array_get($config, 'options'));
 
         if(empty($hosts)){
             throw new InternalServerErrorException('No Cassandra host(s) provided in configuration.');
+        }
+
+        if(empty($keyspace)){
+            throw new InternalServerErrorException('No Cassandra Keyspace provided in configuration.');
         }
 
         $cluster = \Cassandra::cluster()
@@ -39,11 +37,48 @@ class CassandraClient
             $cluster->withCredentials($username, $password);
         }
 
+        if(!empty($ssl)){
+            $cluster->withSSL($ssl);
+        }
+
         $this->session = $cluster->build()->connect($keyspace);
         $this->schema = $this->session->schema();
         $this->keyspace = $this->schema->keyspace($keyspace);
     }
-    
+
+    protected function getSSLBuilder($config)
+    {
+        if(empty($config)){
+            return null;
+        }
+
+        $ssl = \Cassandra::ssl();
+        $serverCert = array_get($config, 'server_cert_path');
+        $clientCert = array_get($config, 'client_cert_path');
+        $privateKey = array_get($config, 'private_key_path');
+        $passPhrase = array_get($config, 'key_pass_phrase');
+
+        if(!empty($serverCert) && !empty($clientCert)){
+            if(empty($privateKey)){
+                throw new InternalServerErrorException('No private key provider.');
+            }
+            return $ssl->withVerifyFlags(\Cassandra::VERIFY_PEER_CERT)
+                        ->withTrustedCerts($serverCert)
+                        ->withClientCert($clientCert)
+                        ->withPrivateKey($privateKey, $passPhrase)
+                        ->build();
+        } elseif (!empty($serverCert)){
+            return $ssl->withVerifyFlags(\Cassandra::VERIFY_PEER_CERT)
+                        ->withTrustedCerts(getenv('SERVER_CERT'))
+                        ->build();
+        } elseif (true === boolval(array_get($config, 'ssl', array_get($config, 'tls', false)))){
+            return $ssl->withVerifyFlags(\Cassandra::VERIFY_NONE)
+                        ->build();
+        } else {
+            return null;
+        }
+    }
+
     public function getSession()
     {
         return $this->session;
@@ -59,6 +94,10 @@ class CassandraClient
         return $this->schema;
     }
 
+    /**
+     * Lists Cassandra table.
+     * @return array
+     */
     public function listTables()
     {
         $tables = $this->keyspace->tables();

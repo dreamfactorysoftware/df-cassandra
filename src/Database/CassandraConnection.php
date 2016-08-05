@@ -53,7 +53,6 @@ class CassandraConnection extends IlluminateConnection
     public function select($query, $bindings = [], $useReadPdo = true)
     {
         $query .= ' ALLOW FILTERING';
-
         return $this->statement($query, $bindings);
     }
 

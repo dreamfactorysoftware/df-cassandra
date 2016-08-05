@@ -10,10 +10,11 @@ class CassandraConfig extends BaseServiceConfigModel
 
     protected $table = 'cassandra_config';
 
-    protected $fillable = ['service_id', 'hosts', 'port', 'username', 'password', 'keyspace'];
+    protected $fillable = ['service_id', 'hosts', 'port', 'username', 'password', 'keyspace', 'options'];
 
     protected $casts = [
-        'service_id' => 'integer'
+        'service_id' => 'integer',
+        'options'    => 'array'
     ];
 
     protected $encrypted = ['password'];
@@ -55,6 +56,19 @@ class CassandraConfig extends BaseServiceConfigModel
             case 'keyspace':
                 $schema['label'] = 'Keyspace';
                 $schema['description'] = 'Keyspace/Namespace of your Cassandra tables';
+                break;
+            case 'options':
+                $schema['type'] = 'object';
+                $schema['object'] =
+                    [
+                        'key'   => ['label' => 'Name', 'type' => 'string'],
+                        'value' => ['label' => 'Value', 'type' => 'string']
+                    ];
+                $schema['description'] =
+                    'An array of options for the Cassandra connection.' .
+                    ' Available options are - <br>' .
+                    ' - ssl : boolean <br>' .
+                    ' - server_cert_path : string';
                 break;
         }
     }
