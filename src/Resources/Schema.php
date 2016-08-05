@@ -181,6 +181,7 @@ class Schema extends BaseNoSqlDbSchemaResource
         return $result;
     }
 
+    /** {@inheritdoc} */
     public function createTable($table, $properties = [], $check_exist = false, $return_schema = false)
     {
         $properties = (is_array($properties) ? $properties : []);

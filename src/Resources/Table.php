@@ -542,6 +542,7 @@ class Table extends BaseNoSqlDbTableResource
         return $out;
     }
 
+    /** {@inheritdoc} */
     public function retrieveRecordsByFilter($table, $filter = null, $params = [], $extras = [])
     {
         $fields = array_get($extras, ApiOptions::FIELDS);
@@ -904,6 +905,18 @@ class Table extends BaseNoSqlDbTableResource
         return $value;
     }
 
+    /**
+     * @param                                    $table
+     * @param                                    $select
+     * @param \Illuminate\Database\Query\Builder $builder
+     * @param                                    $extras
+     *
+     * @return array
+     * @throws \DreamFactory\Core\Exceptions\BadRequestException
+     * @throws \DreamFactory\Core\Exceptions\InternalServerErrorException
+     * @throws \DreamFactory\Core\Exceptions\NotFoundException
+     * @throws \DreamFactory\Core\Exceptions\RestException
+     */
     protected function runQuery($table, $select, Builder $builder, $extras)
     {
         $schema = $this->schema->getTable($table);

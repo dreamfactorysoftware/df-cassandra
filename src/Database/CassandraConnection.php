@@ -20,26 +20,43 @@ class CassandraConnection extends IlluminateConnection
         $this->useDefaultQueryGrammar();
     }
 
+    /**
+     * @return \DreamFactory\Core\Cassandra\Database\Query\Processors\CassandraProcessor
+     */
     public function getDefaultPostProcessor()
     {
         return new CassandraProcessor();
     }
 
+    /**
+     * @return \DreamFactory\Core\Cassandra\Database\Query\Grammars\CassandraGrammar
+     */
     public function getDefaultQueryGrammar()
     {
         return new CassandraGrammar();
     }
 
+    /**
+     * @return \DreamFactory\Core\Cassandra\Components\CassandraClient
+     */
     public function getClient()
     {
         return $this->client;
     }
 
+    /**
+     * @return \Cassandra\Session|null
+     */
     public function getSession()
     {
         return $this->client->getSession();
     }
 
+    /**
+     * @param string $table
+     *
+     * @return CassandraBuilder
+     */
     public function table($table)
     {
         $processor = $this->getPostProcessor();
@@ -50,9 +67,17 @@ class CassandraConnection extends IlluminateConnection
         return $query->from($table);
     }
 
+    /**
+     * @param string $query
+     * @param array  $bindings
+     * @param bool   $useReadPdo
+     *
+     * @return mixed
+     */
     public function select($query, $bindings = [], $useReadPdo = true)
     {
         $query .= ' ALLOW FILTERING';
+
         return $this->statement($query, $bindings);
     }
 
