@@ -28,8 +28,7 @@
     "wiki":   "https://wiki.dreamfactory.com"
   },
   "require":     {
-    "dreamfactory/df-core": "~0.3.2",
-    "hauptmedia/cassandra-stub": "~1.0"
+    "dreamfactory/df-core": "~0.3.2"
   },
   "autoload":    {
     "psr-4": {
