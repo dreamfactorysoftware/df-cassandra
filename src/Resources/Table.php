@@ -24,6 +24,7 @@ use Config;
 use DreamFactory\Core\Exceptions\NotFoundException;
 use DreamFactory\Library\Utility\Scalar;
 use DB;
+use DreamFactory\Core\Enums\DbSimpleTypes;
 
 class Table extends BaseNoSqlDbTableResource
 {
@@ -1106,5 +1107,119 @@ class Table extends BaseNoSqlDbTableResource
         }
 
         return $outArray;
+    }
+
+    /**
+     * @param array          $record
+     * @param ColumnSchema[] $fields_info
+     * @param array          $filter_info
+     * @param bool           $for_update
+     * @param array          $old_record
+     *
+     * @return array
+     * @throws \Exception
+     */
+    protected function parseRecord($record, $fields_info, $filter_info = null, $for_update = false, $old_record = null)
+    {
+        $record = $this->interpretRecordValues($record);
+
+        $parsed = (empty($fields_info)) ? $record : [];
+        if (!empty($fields_info)) {
+            $record = array_change_key_case($record, CASE_LOWER);
+
+            foreach ($fields_info as $fieldInfo) {
+                // add or override for specific fields
+                switch ($fieldInfo->type) {
+                    case DbSimpleTypes::TYPE_UUID:
+                        $fieldVal = $record[$fieldInfo->getName(true)];
+                        $parsed[$fieldInfo->name] = new \Cassandra\Uuid($fieldVal);
+                        break;
+                    case DbSimpleTypes::TYPE_TIMESTAMP_ON_CREATE:
+                        if (!$for_update) {
+                            $parsed[$fieldInfo->name] = $this->getCurrentTimestamp();
+                        }
+                        break;
+                    case DbSimpleTypes::TYPE_TIMESTAMP_ON_UPDATE:
+                        $parsed[$fieldInfo->name] = $this->getCurrentTimestamp();
+                        break;
+                    case DbSimpleTypes::TYPE_USER_ID_ON_CREATE:
+                        if (!$for_update) {
+                            $userId = Session::getCurrentUserId();
+                            if (isset($userId)) {
+                                $parsed[$fieldInfo->name] = $userId;
+                            }
+                        }
+                        break;
+                    case DbSimpleTypes::TYPE_USER_ID_ON_UPDATE:
+                        $userId = Session::getCurrentUserId();
+                        if (isset($userId)) {
+                            $parsed[$fieldInfo->name] = $userId;
+                        }
+                        break;
+                    default:
+                        $name = strtolower($fieldInfo->getName(true));
+                        // need to check for virtual or api_read_only validation here.
+                        if ((DbSimpleTypes::TYPE_VIRTUAL === $fieldInfo->type) ||
+                            isset($fieldInfo->validation, $fieldInfo->validation['api_read_only'])
+                        ) {
+                            unset($record[$name]);
+                            continue;
+                        }
+                        // need to check for id in record and remove it, as some DBs complain.
+                        if ($for_update && (DbSimpleTypes::TYPE_ID === $fieldInfo->type)) {
+                            unset($record[$name]);
+                            continue;
+                        }
+                        if (array_key_exists($name, $record)) {
+                            $fieldVal = array_get($record, $name);
+                            // due to conversion from XML to array, null or empty xml elements have the array value of an empty array
+                            if (is_array($fieldVal) && empty($fieldVal)) {
+                                $fieldVal = null;
+                            }
+
+                            if (is_null($fieldVal) && !$fieldInfo->allowNull) {
+                                throw new BadRequestException("Field '$name' can not be NULL.");
+                            }
+
+                            /** validations **/
+                            if (!static::validateFieldValue(
+                                $fieldInfo->getName(true),
+                                $fieldVal,
+                                $fieldInfo->validation,
+                                $for_update,
+                                $fieldInfo
+                            )
+                            ) {
+                                // if invalid and exception not thrown, drop it
+                                unset($record[$name]);
+                                continue;
+                            }
+
+                            try {
+                                $fieldVal = $this->parseValueForSet($fieldVal, $fieldInfo);
+                            } catch (ForbiddenException $ex) {
+                                unset($record[$name]);
+                                continue;
+                            }
+
+                            $parsed[$fieldInfo->name] = $fieldVal;
+                            unset($record[$name]);
+                        } else {
+                            // if field is required, kick back error
+                            if ($fieldInfo->getRequired() && !$for_update) {
+                                throw new BadRequestException("Required field '$name' can not be NULL.");
+                            }
+                            break;
+                        }
+                        break;
+                }
+            }
+        }
+
+        if (!empty($filter_info)) {
+            $this->validateRecord($parsed, $filter_info, $for_update, $old_record);
+        }
+
+        return $parsed;
     }
 }

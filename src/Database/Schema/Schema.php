@@ -162,6 +162,10 @@ class Schema extends \DreamFactory\Core\Database\Schema\Schema
 
         $definition = $type . $typeExtras;
 
+        if ('string' === $definition) {
+            $definition = 'text';
+        }
+
         //$allowNull = (isset($info['allow_null'])) ? $info['allow_null'] : null;
         //$definition .= ($allowNull) ? ' NULL' : ' NOT NULL';
 
@@ -189,10 +193,6 @@ class Schema extends \DreamFactory\Core\Database\Schema\Schema
             $definition .= ' UNIQUE KEY';
         } elseif ($isPrimaryKey) {
             $definition .= ' PRIMARY KEY';
-        }
-
-        if ('string' === $definition) {
-            $definition = 'text';
         }
 
         return $definition;
