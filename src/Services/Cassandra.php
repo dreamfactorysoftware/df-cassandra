@@ -116,7 +116,7 @@ class Cassandra extends BaseNoSqlDbService implements CacheInterface, DbExtrasIn
 
     public function refreshTableCache()
     {
-        // TODO: Implement refreshTableCache() method.
+        $this->schema->refresh();
     }
 
 }

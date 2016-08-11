@@ -29,7 +29,7 @@ class CassandraConfig extends BaseServiceConfigModel
         switch ($schema['name']) {
             case 'hosts':
                 $schema['label'] = 'Host';
-                $schema['default'] = 'localhost';
+                $schema['default'] = '127.0.0.1';
                 $schema['description'] =
                     'IP Address/Hostname of your Cassandra node. Note that you don’t have to specify the ' .
                     'addresses of all hosts in your cluster. Once the driver has established a connection to any ' .
