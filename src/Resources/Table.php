@@ -1137,6 +1137,10 @@ class Table extends BaseNoSqlDbTableResource
                         $fieldVal = $record[$fieldInfo->getName(true)];
                         $parsed[$fieldInfo->name] = new \Cassandra\Uuid($fieldVal);
                         break;
+                    case DbSimpleTypes::TYPE_TIME_UUID:
+                        $fieldVal = $record[$fieldInfo->getName(true)];
+                        $parsed[$fieldInfo->name] = new \Cassandra\Timeuuid($fieldVal);
+                        break;
                     case DbSimpleTypes::TYPE_TIMESTAMP_ON_CREATE:
                         if (!$for_update) {
                             $parsed[$fieldInfo->name] = $this->getCurrentTimestamp();
