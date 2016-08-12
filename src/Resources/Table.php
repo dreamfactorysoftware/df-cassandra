@@ -895,6 +895,9 @@ class Table extends BaseNoSqlDbTableResource
                 $outFormat = 'Y-m-d H:i:s';
                 $value = DataFormatter::formatDateTime($outFormat, $value, $cfgFormat);
                 break;
+            case 'bool':
+                $value = boolval(('false' === trim(strtolower($value)))? 0 : $value);
+                break;
 
             default:
                 break;
