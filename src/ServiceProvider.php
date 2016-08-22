@@ -4,12 +4,15 @@ namespace DreamFactory\Core\Cassandra;
 use DreamFactory\Core\Cassandra\Database\CassandraConnection;
 use DreamFactory\Core\Cassandra\Models\CassandraConfig;
 use DreamFactory\Core\Cassandra\Services\Cassandra;
+use DreamFactory\Core\Components\ServiceDocBuilder;
 use DreamFactory\Core\Enums\ServiceTypeGroups;
 use DreamFactory\Core\Services\ServiceManager;
 use DreamFactory\Core\Services\ServiceType;
 
 class ServiceProvider extends \Illuminate\Support\ServiceProvider
 {
+    use ServiceDocBuilder;
+
     public function register()
     {
         $this->app->resolving('db', function ($db){
@@ -27,6 +30,9 @@ class ServiceProvider extends \Illuminate\Support\ServiceProvider
                     'description'    => 'Database service for Cassandra connections.',
                     'group'          => ServiceTypeGroups::DATABASE,
                     'config_handler' => CassandraConfig::class,
+                    'default_api_doc' => function ($service) {
+                        return $this->buildServiceDoc($service->id, Cassandra::getApiDocInfo($service));
+                    },
                     'factory'        => function ($config){
                         return new Cassandra($config);
                     },
