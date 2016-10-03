@@ -19,6 +19,8 @@ class CassandraConfig extends BaseServiceConfigModel
 
     protected $encrypted = ['password'];
 
+    protected $protected = ['password'];
+
     /**
      * @param array $schema
      */
