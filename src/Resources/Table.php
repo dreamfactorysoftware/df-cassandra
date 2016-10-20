@@ -994,7 +994,7 @@ class Table extends BaseNoSqlDbTableResource
             $builder->groupBy($groups);
         }
         $builder->take($limit);
-        //$builder->skip($offset);
+        $builder->skip($offset);
 
         $result = $builder->get();
         $data = [];
