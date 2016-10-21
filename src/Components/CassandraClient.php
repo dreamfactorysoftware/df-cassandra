@@ -181,10 +181,47 @@ class CassandraClient
      */
     public function runQuery($cql, array $options = [])
     {
+        $pageInfo = $this->extractPaginationInfo($cql);
         $statement = $this->prepareStatement($cql);
         $rows = $this->executeStatement($statement, $options);
 
-        return static::rowsToArray($rows);
+        return static::rowsToArray($rows, $pageInfo);
+    }
+
+    /**
+     * Extracts pagination info from CQL.
+     *
+     * @param $cql
+     *
+     * @return array
+     */
+    protected function extractPaginationInfo(& $cql)
+    {
+        $words = explode(' ', $cql);
+        $limit = 0;
+        $offset = 0;
+        $limitKey = null;
+        foreach ($words as $key => $word) {
+            if ('limit' === strtolower($word) && is_numeric($words[$key + 1])) {
+                $limit = (int)$words[$key + 1];
+                $limitKey = $key + 1;
+            }
+            if ('offset' === strtolower($word) && is_numeric($words[$key + 1])) {
+                $offset = (int)$words[$key + 1];
+                //Take out offset from CQL. It is not supported.
+                unset($words[$key], $words[$key + 1]);
+            }
+        }
+
+        //Offset is not supported by CQL. Therefore need to modify limit based on offset.
+        //Adding offset to limit in order to fetch all available records.
+        $limit += $offset;
+        if ($limitKey !== null) {
+            $words[$limitKey] = $limit;
+        }
+        $cql = implode(' ', $words);
+
+        return ['limit' => $limit, 'offset' => $offset];
     }
 
     /**
@@ -195,9 +232,24 @@ class CassandraClient
      */
     public static function rowsToArray($rows, array $options = [])
     {
+        $limit = array_get($options, 'limit', 0);
+        $offset = array_get($options, 'offset', 0);
+
         $array = [];
-        foreach ($rows as $row) {
-            $array[] = $row;
+        if ($offset > 0) {
+            if ($limit > 0) {
+                for ($i = 0; ($i < $limit && $rows->offsetExists($offset + $i)); $i++) {
+                    $array[] = $rows->offsetGet($offset + $i);
+                }
+            } else {
+                for ($i = 0; $rows->offsetExists($offset + $i); $i++) {
+                    $array[] = $rows->offsetGet($offset + $i);
+                }
+            }
+        } else {
+            foreach ($rows as $row) {
+                $array[] = $row;
+            }
         }
 
         return $array;
