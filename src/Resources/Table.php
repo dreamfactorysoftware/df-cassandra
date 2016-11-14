@@ -4,6 +4,7 @@ namespace DreamFactory\Core\Cassandra\Resources;
 use DreamFactory\Core\Cassandra\Database\CassandraConnection;
 use DreamFactory\Core\Cassandra\Database\Schema\Schema as CasSchema;
 use DreamFactory\Core\Contracts\RequestHandlerInterface;
+use DreamFactory\Core\Enums\DbResourceTypes;
 use DreamFactory\Core\Resources\BaseNoSqlDbTableResource;
 use DreamFactory\Core\Exceptions\InternalServerErrorException;
 use DreamFactory\Core\Exceptions\RestException;
@@ -50,7 +51,7 @@ class Table extends BaseNoSqlDbTableResource
      */
     protected function getFieldsInfo($table_name)
     {
-        $table = $this->schema->getTable($table_name);
+        $table = $this->schema->getResource(DbResourceTypes::TYPE_TABLE, $table_name);
         if (!$table) {
             throw new NotFoundException("Table '$table_name' does not exist in the database.");
         }
@@ -923,7 +924,7 @@ class Table extends BaseNoSqlDbTableResource
      */
     protected function runQuery($table, $select, Builder $builder, $extras)
     {
-        $schema = $this->schema->getTable($table);
+        $schema = $this->schema->getResource(DbResourceTypes::TYPE_TABLE, $table);
         if (!$schema) {
             throw new NotFoundException("Table '$table' does not exist in the database.");
         }
