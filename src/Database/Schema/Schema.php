@@ -14,7 +14,7 @@ class Schema extends \DreamFactory\Core\Database\Schema\Schema
     /**
      * @inheritdoc
      */
-    protected function loadTable(TableSchema $table)
+    protected function findColumns(TableSchema $table)
     {
         $cTable = $this->connection->getClient()->getTable($table->name);
         $columns = $cTable->columns();
@@ -24,21 +24,20 @@ class Schema extends \DreamFactory\Core\Database\Schema\Schema
             $pkNames[] = $pk->name();
         }
 
+        $out = [];
         if (!empty($columns)) {
             foreach ($columns as $name => $column) {
-                $c = new ColumnSchema([
+                $out[] = [
                     'name'         => $name,
                     'isPrimaryKey' => (in_array($name, $pkNames)) ? true : false,
                     'allowNull'    => true,
                     'type'         => $column->type()->name(),
                     'dbType'       => $column->type()->name(),
-
-                ]);
-                $table->addColumn($c);
+                ];
             }
         }
 
-        return $table;
+        return $out;
     }
 
     /**
@@ -47,7 +46,7 @@ class Schema extends \DreamFactory\Core\Database\Schema\Schema
      *
      * @return \Illuminate\Database\Query\Expression|string
      */
-    public function parseFieldForFilter(ColumnSchema $field, $as_quoted_string = false)
+    public function parseFieldForFilter($field, $as_quoted_string = false)
     {
         return $field->name;
 //        switch ($field->dbType) {
@@ -63,7 +62,7 @@ class Schema extends \DreamFactory\Core\Database\Schema\Schema
      *
      * @return array
      */
-    public function getPdoBinding(ColumnSchema $column)
+    public function getPdoBinding($column)
     {
         switch ($column->dbType) {
             case null:
@@ -102,7 +101,7 @@ class Schema extends \DreamFactory\Core\Database\Schema\Schema
      *
      * @return \Illuminate\Database\Query\Expression|string
      */
-    public function parseFieldForSelect(ColumnSchema $field, $as_quoted_string = false)
+    public function parseFieldForSelect($field, $as_quoted_string = false)
     {
         switch ($field->dbType) {
             //case null:
@@ -248,7 +247,7 @@ class Schema extends \DreamFactory\Core\Database\Schema\Schema
     {
         $sql = "DROP TABLE " . $this->quoteTableName($table);
         $result = $this->connection->statement($sql);
-        $this->removeSchemaExtrasForTables($table);
+        $this->tablesDropped($table);
 
         //  Any changes here should refresh cached schema
         $this->refresh();
