@@ -6,7 +6,7 @@ use DreamFactory\Core\Database\Schema\TableSchema;
 use DreamFactory\Core\Database\Schema\ColumnSchema;
 use DreamFactory\Core\Enums\DbSimpleTypes;
 
-class Schema extends \DreamFactory\Core\Database\Schema\Schema
+class Schema extends \DreamFactory\Core\Database\Components\Schema
 {
     /** @var  CassandraConnection */
     protected $connection;
@@ -54,7 +54,7 @@ class Schema extends \DreamFactory\Core\Database\Schema\Schema
 //                return DB::raw($field->getDbFunction());
 //        }
 //
-//        return ($as_quoted_string) ? $field->rawName : $field->name;
+//        return ($as_quoted_string) ? $field->quotedName : $field->name;
     }
 
     /**
@@ -107,7 +107,7 @@ class Schema extends \DreamFactory\Core\Database\Schema\Schema
             //case null:
             //    return DB::raw($field->getDbFunction() . ' AS ' . $this->quoteColumnName($field->getName(true)));
             default :
-                $out = ($as_quoted_string) ? $field->rawName : $field->name;
+                $out = ($as_quoted_string) ? $field->quotedName : $field->name;
                 if (!empty($field->alias)) {
                     $out .= ' AS ' . $field->alias;
                 }
@@ -121,11 +121,10 @@ class Schema extends \DreamFactory\Core\Database\Schema\Schema
      *
      * @param string $schema the schema of the tables. Defaults to empty string, meaning the current or default schema.
      *                       If not empty, the returned table names will be prefixed with the schema name.
-     * @param bool   $include_views
      *
      * @return array all table names in the database.
      */
-    protected function findTableNames($schema = '', $include_views = true)
+    protected function findTableNames($schema = '')
     {
         $outTables = [];
         $client = $this->connection->getClient();
@@ -137,10 +136,12 @@ class Schema extends \DreamFactory\Core\Database\Schema\Schema
             $cTable = $client->getTable($name);
             $primaryKey = array_get($cTable->primaryKey(), 0);
             $outTables[strtolower($name)] = new TableSchema([
-                'schemaName' => $schemaName,
-                'tableName'  => $name,
-                'name'       => $name,
-                'primaryKey' => $primaryKey->name()
+                'schemaName'   => $schemaName,
+                'tableName'    => $name,
+                'name'         => $name,
+                'internalName' => $name,
+                'quotedName'   => $name,
+                'primaryKey'   => $primaryKey->name()
             ]);
         }
 
