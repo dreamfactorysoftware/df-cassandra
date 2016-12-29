@@ -3,7 +3,6 @@ namespace DreamFactory\Core\Cassandra\Database\Schema;
 
 use DreamFactory\Core\Cassandra\Database\CassandraConnection;
 use DreamFactory\Core\Database\Schema\TableSchema;
-use DreamFactory\Core\Database\Schema\ColumnSchema;
 use DreamFactory\Core\Enums\DbSimpleTypes;
 
 class Schema extends \DreamFactory\Core\Database\Components\Schema
@@ -41,82 +40,6 @@ class Schema extends \DreamFactory\Core\Database\Components\Schema
     }
 
     /**
-     * @param ColumnSchema $field
-     * @param bool         $as_quoted_string
-     *
-     * @return \Illuminate\Database\Query\Expression|string
-     */
-    public function parseFieldForFilter($field, $as_quoted_string = false)
-    {
-        return $field->name;
-//        switch ($field->dbType) {
-//            case null:
-//                return DB::raw($field->getDbFunction());
-//        }
-//
-//        return ($as_quoted_string) ? $field->quotedName : $field->name;
-    }
-
-    /**
-     * @param \DreamFactory\Core\Database\Schema\ColumnSchema $column
-     *
-     * @return array
-     */
-    public function getPdoBinding($column)
-    {
-        switch ($column->dbType) {
-            case null:
-                $type = $column->getDbFunctionType();
-                $pdoType = $this->extractPdoType($type);
-                $phpType = $type;
-                break;
-            default:
-                $pdoType = ($column->allowNull) ? null : $column->pdoType;
-                $phpType = $column->phpType;
-                break;
-        }
-
-        return ['name' => $column->getName(true), 'pdo_type' => $pdoType, 'php_type' => $phpType];
-    }
-
-    /**
-     * @param $value
-     * @param $field_info
-     *
-     * @return mixed
-     */
-    public function parseValueForSet($value, $field_info)
-    {
-        switch ($field_info->dbType) {
-            case 'int':
-                return intval($value);
-            default:
-                return $value;
-        }
-    }
-
-    /**
-     * @param ColumnSchema $field
-     * @param bool         $as_quoted_string
-     *
-     * @return \Illuminate\Database\Query\Expression|string
-     */
-    public function parseFieldForSelect($field, $as_quoted_string = false)
-    {
-        switch ($field->dbType) {
-            //case null:
-            //    return DB::raw($field->getDbFunction() . ' AS ' . $this->quoteColumnName($field->getName(true)));
-            default :
-                $out = ($as_quoted_string) ? $field->quotedName : $field->name;
-                if (!empty($field->alias)) {
-                    $out .= ' AS ' . $field->alias;
-                }
-
-                return $out;
-        }
-    }
-
-    /**
      * Returns all table names in the database.
      *
      * @param string $schema the schema of the tables. Defaults to empty string, meaning the current or default schema.
@@ -137,10 +60,7 @@ class Schema extends \DreamFactory\Core\Database\Components\Schema
             $primaryKey = array_get($cTable->primaryKey(), 0);
             $outTables[strtolower($name)] = new TableSchema([
                 'schemaName'   => $schemaName,
-                'tableName'    => $name,
                 'name'         => $name,
-                'internalName' => $name,
-                'quotedName'   => $name,
                 'primaryKey'   => $primaryKey->name()
             ]);
         }
@@ -266,7 +186,7 @@ class Schema extends \DreamFactory\Core\Database\Components\Schema
     {
         $result = 0;
         $tableInfo = $this->getTable($table);
-        if (($columnInfo = $tableInfo->getColumn($column)) && (DbSimpleTypes::TYPE_VIRTUAL !== $columnInfo->type)) {
+        if (($columnInfo = $tableInfo->getColumn($column)) && !$columnInfo->isVirtual) {
             $sql = "ALTER TABLE " . $this->quoteTableName($table) . " DROP " . $this->quoteColumnName($column);
             $result = $this->connection->statement($sql);
         }

@@ -3,29 +3,30 @@ namespace DreamFactory\Core\Cassandra\Resources;
 
 use DreamFactory\Core\Cassandra\Database\CassandraConnection;
 use DreamFactory\Core\Cassandra\Database\Schema\Schema as CasSchema;
+use DreamFactory\Core\Cassandra\Database\Query\CassandraBuilder;
 use DreamFactory\Core\Contracts\RequestHandlerInterface;
-use DreamFactory\Core\Enums\DbResourceTypes;
+use DreamFactory\Core\Database\Schema\ColumnSchema;
+use DreamFactory\Core\Database\Components\Expression;
+use DreamFactory\Core\Database\Enums\DbFunctionUses;
 use DreamFactory\Core\Database\Resources\BaseNoSqlDbTableResource;
-use DreamFactory\Core\Exceptions\InternalServerErrorException;
-use DreamFactory\Core\Exceptions\RestException;
 use DreamFactory\Core\Enums\ApiOptions;
-use DreamFactory\Core\Utility\Session;
 use DreamFactory\Core\Enums\DbLogicalOperators;
 use DreamFactory\Core\Enums\DbComparisonOperators;
-use DreamFactory\Core\Cassandra\Database\Query\CassandraBuilder;
-use DreamFactory\Core\Database\Schema\ColumnSchema;
-use Illuminate\Database\Query\Builder;
-use DreamFactory\Core\Database\Components\Expression;
+use DreamFactory\Core\Enums\DbResourceTypes;
+use DreamFactory\Core\Enums\DbSimpleTypes;
 use DreamFactory\Core\Exceptions\BadRequestException;
 use DreamFactory\Core\Exceptions\ForbiddenException;
-use DreamFactory\Core\Utility\DataFormatter;
-use DreamFactory\Library\Utility\Enums\Verbs;
-use DreamFactory\Core\Utility\ResourcesWrapper;
-use Config;
+use DreamFactory\Core\Exceptions\InternalServerErrorException;
 use DreamFactory\Core\Exceptions\NotFoundException;
+use DreamFactory\Core\Exceptions\RestException;
+use DreamFactory\Core\Utility\DataFormatter;
+use DreamFactory\Core\Utility\ResourcesWrapper;
+use DreamFactory\Core\Utility\Session;
+use DreamFactory\Library\Utility\Enums\Verbs;
 use DreamFactory\Library\Utility\Scalar;
+use Config;
 use DB;
-use DreamFactory\Core\Enums\DbSimpleTypes;
+use Illuminate\Database\Query\Builder;
 
 class Table extends BaseNoSqlDbTableResource
 {
@@ -125,7 +126,7 @@ class Table extends BaseNoSqlDbTableResource
         $rollback = false,
         $continue = false,
         $single = false
-    ){
+    ) {
         if ($rollback) {
             // sql transaction really only for rollback scenario, not batching
             if (0 >= $this->connection->transactionLevel()) {
@@ -590,7 +591,7 @@ class Table extends BaseNoSqlDbTableResource
         $params = [],
         $ss_filters = [],
         $avail_fields = []
-    ){
+    ) {
         // interpret any parameter values as lookups
         $params = (is_array($params) ? static::interpretRecordValues($params) : []);
         $serverFilter = $this->buildQueryStringFromData($ss_filters);
@@ -811,7 +812,12 @@ class Table extends BaseNoSqlDbTableResource
                     $sqlOp = DbLogicalOperators::NOT_STR . ' ' . $sqlOp;
                 }
 
-                $out = $this->schema->parseFieldForFilter($info, true) . " $sqlOp";
+                if ($function = $info->getDbFunction(DbFunctionUses::FILTER)) {
+                    $out = $this->dbConn->raw($function);
+                } else {
+                    $out = $field->quotedName;
+                }
+                $out .= " $sqlOp";
                 $out .= (isset($value) ? " $value" : null);
                 if ($leftParen) {
                     $out = $leftParen . $out;
@@ -825,7 +831,7 @@ class Table extends BaseNoSqlDbTableResource
         }
 
         // This could be SQL injection attempt or unsupported filter arrangement
-        throw new BadRequestException('Invalid or unparsable filter request.');
+        throw new BadRequestException('Invalid or unsupported filter request.');
     }
 
     /**
@@ -858,15 +864,18 @@ class Table extends BaseNoSqlDbTableResource
                 return $value;
             }
         }
-        // if not already a replacement parameter, evaluate it
-        try {
-            $value = $this->schema->parseValueForSet($value, $info);
-        } catch (ForbiddenException $ex) {
-            // need to prop this up?
-        }
 
-        switch ($cnvType = $this->schema->determinePhpConversionType($info->type)) {
-            case 'int':
+        switch ($info->type) {
+            case DbSimpleTypes::TYPE_BOOLEAN:
+                $value = boolval(('false' === trim(strtolower($value))) ? 0 : $value);
+                break;
+
+            case DbSimpleTypes::TYPE_INTEGER:
+            case DbSimpleTypes::TYPE_ID:
+            case DbSimpleTypes::TYPE_REF:
+            case DbSimpleTypes::TYPE_USER_ID:
+            case DbSimpleTypes::TYPE_USER_ID_ON_CREATE:
+            case DbSimpleTypes::TYPE_USER_ID_ON_UPDATE:
                 if (!is_int($value)) {
                     if (!(ctype_digit($value))) {
                         throw new BadRequestException("Field '{$info->getName(true)}' must be a valid integer.");
@@ -876,33 +885,47 @@ class Table extends BaseNoSqlDbTableResource
                 }
                 break;
 
-            case 'time':
-                $cfgFormat = Config::get('df.db_time_format');
-                $outFormat = 'H:i:s.u';
-                $value = DataFormatter::formatDateTime($outFormat, $value, $cfgFormat);
+            case DbSimpleTypes::TYPE_DECIMAL:
+            case DbSimpleTypes::TYPE_DOUBLE:
+            case DbSimpleTypes::TYPE_FLOAT:
                 break;
-            case 'date':
+
+            case DbSimpleTypes::TYPE_STRING:
+            case DbSimpleTypes::TYPE_TEXT:
+                break;
+
+            // special checks
+            case DbSimpleTypes::TYPE_DATE:
                 $cfgFormat = Config::get('df.db_date_format');
                 $outFormat = 'Y-m-d';
                 $value = DataFormatter::formatDateTime($outFormat, $value, $cfgFormat);
                 break;
-            case 'datetime':
+
+            case DbSimpleTypes::TYPE_TIME:
+                $cfgFormat = Config::get('df.db_time_format');
+                $outFormat = 'H:i:s.u';
+                $value = DataFormatter::formatDateTime($outFormat, $value, $cfgFormat);
+                break;
+
+            case DbSimpleTypes::TYPE_DATETIME:
                 $cfgFormat = Config::get('df.db_datetime_format');
                 $outFormat = 'Y-m-d H:i:s';
                 $value = DataFormatter::formatDateTime($outFormat, $value, $cfgFormat);
                 break;
-            case 'timestamp':
+
+            case DbSimpleTypes::TYPE_TIMESTAMP:
+            case DbSimpleTypes::TYPE_TIMESTAMP_ON_CREATE:
+            case DbSimpleTypes::TYPE_TIMESTAMP_ON_UPDATE:
                 $cfgFormat = Config::get('df.db_timestamp_format');
                 $outFormat = 'Y-m-d H:i:s';
                 $value = DataFormatter::formatDateTime($outFormat, $value, $cfgFormat);
-                break;
-            case 'bool':
-                $value = boolval(('false' === trim(strtolower($value)))? 0 : $value);
                 break;
 
             default:
                 break;
         }
+
+        $value = $this->schema->parseValueForSet($value, $info);
 
         $out_params[] = $value;
         $value = '?';
@@ -1050,6 +1073,25 @@ class Table extends BaseNoSqlDbTableResource
     }
 
     /**
+     * @param ColumnSchema $field
+     *
+     * @return \Illuminate\Database\Query\Expression|string
+     */
+    protected function parseFieldForSelect($field)
+    {
+        if ($function = $field->getDbFunction(DbFunctionUses::SELECT)) {
+            return $this->dbConn->raw($function . ' AS ' . $field->getName(true, true));
+        }
+
+        $out = $field->name;
+        if (!empty($field->alias)) {
+            $out .= ' AS ' . $field->alias;
+        }
+
+        return $out;
+    }
+
+    /**
      * @param  string|array   $fields
      * @param  ColumnSchema[] $avail_fields
      *
@@ -1070,16 +1112,22 @@ class Table extends BaseNoSqlDbTableResource
                 }
 
                 $fieldInfo = $avail_fields[$ndx];
-                $bindArray[] = $this->schema->getPdoBinding($fieldInfo);
-                $outArray[] = $this->schema->parseFieldForSelect($fieldInfo, false);
+                $bindArray[] = [
+                    'name'     => $fieldInfo->getName(true),
+                    'php_type' => $fieldInfo->phpType
+                ];
+                $outArray[] = $this->parseFieldForSelect($fieldInfo);
             }
         } else {
             foreach ($avail_fields as $fieldInfo) {
-                if ($fieldInfo->isAggregate()) {
+                if ($fieldInfo->isAggregate) {
                     continue;
                 }
-                $bindArray[] = $this->schema->getPdoBinding($fieldInfo);
-                $outArray[] = $this->schema->parseFieldForSelect($fieldInfo, false);
+                $bindArray[] = [
+                    'name'     => $fieldInfo->getName(true),
+                    'php_type' => $fieldInfo->phpType
+                ];
+                $outArray[] = $this->parseFieldForSelect($fieldInfo);
             }
         }
 
@@ -1167,7 +1215,7 @@ class Table extends BaseNoSqlDbTableResource
                     default:
                         $name = strtolower($fieldInfo->getName(true));
                         // need to check for virtual or api_read_only validation here.
-                        if ((DbSimpleTypes::TYPE_VIRTUAL === $fieldInfo->type) ||
+                        if ($fieldInfo->isVirtual ||
                             isset($fieldInfo->validation, $fieldInfo->validation['api_read_only'])
                         ) {
                             unset($record[$name]);
@@ -1204,7 +1252,7 @@ class Table extends BaseNoSqlDbTableResource
                             }
 
                             try {
-                                $fieldVal = $this->parseValueForSet($fieldVal, $fieldInfo);
+                                $fieldVal = $this->parseValueForSet($fieldVal, $fieldInfo, $for_update);
                             } catch (ForbiddenException $ex) {
                                 unset($record[$name]);
                                 continue;
@@ -1268,6 +1316,7 @@ class Table extends BaseNoSqlDbTableResource
                             print_r($record, true));
                     }
 
+                    /** @var ColumnSchema $idFieldInfo */
                     $idFieldInfo = $this->tableIdsInfo[0];
                     unset($record[$idFieldInfo->getName()]);
 
@@ -1369,6 +1418,7 @@ class Table extends BaseNoSqlDbTableResource
                             print_r($record, true));
                     }
 
+                    /** @var ColumnSchema $idFieldInfo */
                     $idFieldInfo = $this->tableIdsInfo[0];
                     unset($record[$idFieldInfo->getName()]);
 
