@@ -219,7 +219,6 @@ class Table extends BaseNoSqlDbTableResource
                 break;
 
             case Verbs::PUT:
-            case Verbs::MERGE:
             case Verbs::PATCH:
                 if (!empty($updates)) {
                     $record = $updates;
@@ -415,7 +414,6 @@ class Table extends BaseNoSqlDbTableResource
         } elseif (!empty($this->batchIds)) {
             switch ($action) {
                 case Verbs::PUT:
-                case Verbs::MERGE:
                 case Verbs::PATCH:
                     if (!empty($updates)) {
                         $parsed = $this->parseRecord($updates, $this->tableFieldsInfo, $ssFilters, true);
