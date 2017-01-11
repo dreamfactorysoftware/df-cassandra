@@ -119,19 +119,7 @@ class Schema extends \DreamFactory\Core\Database\Components\Schema
     }
 
     /**
-     * Builds a SQL statement for changing the definition of a column.
-     *
-     * @param string $table      the table whose column is to be changed. The table name will be properly quoted by the
-     *                           method.
-     * @param string $column     the name of the column to be changed. The name will be properly quoted by the method.
-     * @param string $definition the new column type. The {@link getColumnType} method will be invoked to convert
-     *                           abstract column type (if any) into the physical one. Anything that is not recognized
-     *                           as abstract type will be kept in the generated SQL. For example, 'string' will be
-     *                           turned into 'varchar(255)', while 'string not null' will become 'varchar(255) not
-     *                           null'.
-     *
-     * @return string the SQL statement for changing the definition of a column.
-     * @since 1.1.6
+     * @inheritdoc
      */
     public function alterColumn($table, $column, $definition)
     {
@@ -139,14 +127,14 @@ class Schema extends \DreamFactory\Core\Database\Components\Schema
             array_get($definition, 'name') !== array_get($definition, 'new_name')
         ) {
             $cql = 'ALTER TABLE ' .
-                $this->quoteTableName($table) .
+                $table .
                 ' RENAME ' .
                 $this->quoteColumnName($column) .
                 ' TO ' .
                 $this->quoteColumnName(array_get($definition, 'new_name'));
         } else {
             $cql = 'ALTER TABLE ' .
-                $this->quoteTableName($table) .
+                $table .
                 ' ALTER ' .
                 $this->quoteColumnName($column) .
                 ' TYPE ' .
@@ -157,44 +145,16 @@ class Schema extends \DreamFactory\Core\Database\Components\Schema
     }
 
     /**
-     * Builds and executes a SQL statement for dropping a DB table.
-     *
-     * @param string $table the table to be dropped. The name will be properly quoted by the method.
-     *
-     * @return integer 0 is always returned. See {@link http://php.net/manual/en/pdostatement.rowcount.php} for more
-     *                 information.
+     * @inheritdoc
      */
-    public function dropTable($table)
+    public function dropColumns($table, $columns)
     {
-        $sql = "DROP TABLE " . $this->quoteTableName($table);
-        $result = $this->connection->statement($sql);
-        $this->tablesDropped($table);
+        $columns = (array)$columns;
 
-        //  Any changes here should refresh cached schema
-        $this->refresh();
-
-        return $result;
-    }
-
-    /**
-     * @param $table
-     * @param $column
-     *
-     * @return bool|int
-     */
-    public function dropColumn($table, $column)
-    {
-        $result = 0;
-        $tableInfo = $this->getTable($table);
-        if (($columnInfo = $tableInfo->getColumn($column)) && !$columnInfo->isVirtual) {
-            $sql = "ALTER TABLE " . $this->quoteTableName($table) . " DROP " . $this->quoteColumnName($column);
-            $result = $this->connection->statement($sql);
+        if (!empty($columns)) {
+            return $this->connection->statement("ALTER TABLE $table DROP " . implode(',', $columns));
         }
-        $this->removeSchemaExtrasForFields($table, $column);
 
-        //  Any changes here should refresh cached schema
-        $this->refresh();
-
-        return $result;
+        return false;
     }
 }
