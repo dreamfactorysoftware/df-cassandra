@@ -5,8 +5,8 @@ use DreamFactory\Core\Cassandra\Database\Schema\Schema;
 use DreamFactory\Core\Cassandra\Resources\Table;
 use DreamFactory\Core\Components\RequireExtensions;
 use DreamFactory\Core\Exceptions\InternalServerErrorException;
-use DreamFactory\Core\Resources\DbSchemaResource;
-use DreamFactory\Core\Services\BaseDbService;
+use DreamFactory\Core\Database\Resources\DbSchemaResource;
+use DreamFactory\Core\Database\Services\BaseDbService;
 use DreamFactory\Core\Utility\Session;
 use Illuminate\Database\DatabaseManager;
 
