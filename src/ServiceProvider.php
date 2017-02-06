@@ -13,7 +13,7 @@ class ServiceProvider extends \Illuminate\Support\ServiceProvider
 {
     use ServiceDocBuilder;
 
-    public function register()
+    public function boot()
     {
         $this->app->resolving('db', function ($db){
             $db->extend('cassandra', function ($config){
@@ -39,5 +39,8 @@ class ServiceProvider extends \Illuminate\Support\ServiceProvider
                 ])
             );
         });
+
+        // add migrations
+        $this->loadMigrationsFrom(__DIR__ . '/../database/migrations');
     }
 }
