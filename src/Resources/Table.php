@@ -479,7 +479,7 @@ class Table extends BaseNoSqlDbTableResource
 
                     $rows = $builder->delete();
                     if (count($this->batchIds) !== $rows) {
-                        throw new BadRequestException('Batch Error: Not all requested records were deleted.');
+                        throw new BadRequestException('Batch Error: Not all requested records could be deleted.');
                     }
                     break;
 
@@ -514,7 +514,7 @@ class Table extends BaseNoSqlDbTableResource
 
                         if (!empty($errors)) {
                             $context = ['error' => $errors, ResourcesWrapper::getWrapper() => $out];
-                            throw new NotFoundException('Batch Error: Not all records could be retrieved.', null, null,
+                            throw new NotFoundException('Batch Error: Not all requested records could be retrieved.', null, null,
                                 $context);
                         }
                     }
@@ -1358,7 +1358,7 @@ class Table extends BaseNoSqlDbTableResource
             if (!empty($errors)) {
                 $wrapper = ResourcesWrapper::getWrapper();
                 $context = ['error' => $errors, $wrapper => $out];
-                $msg = 'Batch Error: Not all records could be patched.';
+                $msg = 'Batch Error: Not all requested records could be updated.';
             }
 
             if ($rollback) {
@@ -1460,7 +1460,7 @@ class Table extends BaseNoSqlDbTableResource
             if (!empty($errors)) {
                 $wrapper = ResourcesWrapper::getWrapper();
                 $context = ['error' => $errors, $wrapper => $out];
-                $msg = 'Batch Error: Not all records could be updated.';
+                $msg = 'Batch Error: Not all requested records could be updated.';
             }
 
             if ($rollback) {
