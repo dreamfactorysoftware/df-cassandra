@@ -10,6 +10,25 @@ class Schema extends \DreamFactory\Core\Database\Components\Schema
     /** @var  CassandraConnection */
     protected $connection;
 
+    const PROVIDES_FIELD_SCHEMA = true;
+
+    /**
+     * Quotes a string value for use in a query.
+     *
+     * @param string $str string to be quoted
+     *
+     * @return string the properly quoted string
+     * @see http://www.php.net/manual/en/function.PDO-quote.php
+     */
+    public function quoteValue($str)
+    {
+        if (is_int($str) || is_float($str)) {
+            return $str;
+        }
+
+        return "'" . addcslashes(str_replace("'", "''", $str), "\000\n\r\\\032") . "'";
+    }
+
     /**
      * @inheritdoc
      */
@@ -59,9 +78,9 @@ class Schema extends \DreamFactory\Core\Database\Components\Schema
             $cTable = $client->getTable($name);
             $primaryKey = array_get($cTable->primaryKey(), 0);
             $outTables[strtolower($name)] = new TableSchema([
-                'schemaName'   => $schemaName,
-                'name'         => $name,
-                'primaryKey'   => $primaryKey->name()
+                'schemaName' => $schemaName,
+                'name'       => $name,
+                'primaryKey' => $primaryKey->name()
             ]);
         }
 
@@ -116,6 +135,13 @@ class Schema extends \DreamFactory\Core\Database\Components\Schema
         }
 
         return $definition;
+    }
+
+    public function addColumn($table, $column, $type)
+    {
+        return <<<CQL
+ALTER TABLE $table ADD {$this->quoteColumnName($column)} {$this->getColumnType($type)};
+CQL;
     }
 
     /**
