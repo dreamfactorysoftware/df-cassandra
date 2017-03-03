@@ -47,10 +47,10 @@ class Schema extends \DreamFactory\Core\Database\Components\Schema
             foreach ($columns as $name => $column) {
                 $out[] = [
                     'name'         => $name,
-                    'isPrimaryKey' => (in_array($name, $pkNames)) ? true : false,
-                    'allowNull'    => true,
+                    'is_primary_key' => (in_array($name, $pkNames)) ? true : false,
+                    'allow_null'    => true,
                     'type'         => $column->type()->name(),
-                    'dbType'       => $column->type()->name(),
+                    'db_type'       => $column->type()->name(),
                 ];
             }
         }

@@ -813,7 +813,7 @@ class Table extends BaseNoSqlDbTableResource
                 if ($function = $info->getDbFunction(DbFunctionUses::FILTER)) {
                     $out = $this->dbConn->raw($function);
                 } else {
-                    $out = $field->quotedName;
+                    $out = $info->quotedName;
                 }
                 $out .= " $sqlOp";
                 $out .= (isset($value) ? " $value" : null);
@@ -869,6 +869,7 @@ class Table extends BaseNoSqlDbTableResource
                 break;
 
             case DbSimpleTypes::TYPE_INTEGER:
+            case DbSimpleTypes::TYPE_INT:
             case DbSimpleTypes::TYPE_ID:
             case DbSimpleTypes::TYPE_REF:
             case DbSimpleTypes::TYPE_USER_ID:
