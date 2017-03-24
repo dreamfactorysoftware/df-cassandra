@@ -1,6 +1,7 @@
 <?php
 namespace DreamFactory\Core\Cassandra\Resources;
 
+use DreamFactory\Core\Cassandra\Components\CassandraClient;
 use DreamFactory\Core\Cassandra\Database\CassandraConnection;
 use DreamFactory\Core\Cassandra\Database\Schema\Schema as CasSchema;
 use DreamFactory\Core\Cassandra\Database\Query\CassandraBuilder;
@@ -94,6 +95,99 @@ class Table extends BaseNoSqlDbTableResource
     }
 
     /**
+     * @param array          $record
+     * @param ColumnSchema[] $ids_info
+     * @param null           $extras
+     * @param bool           $on_create
+     * @param bool           $remove
+     *
+     * @return array|bool|int|mixed|null|string
+     */
+    protected static function checkForIds(&$record, $ids_info, $extras = null, $on_create = false, $remove = false)
+    {
+        $id = null;
+        if (!empty($ids_info)) {
+            if (1 == count($ids_info)) {
+                $info = $ids_info[0];
+                $name = $info->getName(true);
+                if (is_array($record)) {
+                    $value = array_get($record, $name);
+                    if ($remove) {
+                        unset($record[$name]);
+                    }
+                } else {
+                    $value = $record;
+                }
+                if (!empty($value)) {
+                    if (!is_array($value)) {
+                        switch ($info->type) {
+                            case 'int':
+                                $value = intval($value);
+                                break;
+                            case 'string':
+                                $value = strval($value);
+                                break;
+                            case DbSimpleTypes::TYPE_UUID:
+                                $value = new \Cassandra\Uuid($value);
+                                break;
+                        }
+                    }
+                    $id = $value;
+                } else {
+                    // could be passed in as a parameter affecting all records
+                    $param = array_get($extras, $name);
+                    if ($on_create && $info->getRequired() && empty($param)) {
+                        return false;
+                    }
+                }
+            } else {
+                $id = [];
+                foreach ($ids_info as $info) {
+                    $name = $info->getName(true);
+                    if (is_array($record)) {
+                        $value = array_get($record, $name);
+                        if ($remove) {
+                            unset($record[$name]);
+                        }
+                    } else {
+                        $value = $record;
+                    }
+                    if (!empty($value)) {
+                        if (!is_array($value)) {
+                            switch ($info->type) {
+                                case 'int':
+                                    $value = intval($value);
+                                    break;
+                                case 'string':
+                                    $value = strval($value);
+                                    break;
+                                case DbSimpleTypes::TYPE_UUID:
+                                    $value = new \Cassandra\Uuid($value);
+                                    break;
+                            }
+                        }
+                        $id[$name] = $value;
+                    } else {
+                        // could be passed in as a parameter affecting all records
+                        $param = array_get($extras, $name);
+                        if ($on_create && $info->getRequired() && empty($param)) {
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (!empty($id)) {
+            return $id;
+        } elseif ($on_create) {
+            return [];
+        }
+
+        return false;
+    }
+
+    /**
      * @param array   $avail_fields
      * @param boolean $names_only Return only an array of names, otherwise return all properties
      *
@@ -126,7 +220,7 @@ class Table extends BaseNoSqlDbTableResource
         $rollback = false,
         $continue = false,
         $single = false
-    ) {
+    ){
         if ($rollback) {
             // sql transaction really only for rollback scenario, not batching
             if (0 >= $this->connection->transactionLevel()) {
@@ -341,6 +435,8 @@ class Table extends BaseNoSqlDbTableResource
                 break;
         }
 
+        CassandraClient::flattenNativeTypeData($out);
+
         return $out;
     }
 
@@ -514,7 +610,8 @@ class Table extends BaseNoSqlDbTableResource
 
                         if (!empty($errors)) {
                             $context = ['error' => $errors, ResourcesWrapper::getWrapper() => $out];
-                            throw new NotFoundException('Batch Error: Not all requested records could be retrieved.', null, null,
+                            throw new NotFoundException('Batch Error: Not all requested records could be retrieved.',
+                                null, null,
                                 $context);
                         }
                     }
@@ -539,6 +636,8 @@ class Table extends BaseNoSqlDbTableResource
         if (0 < $this->connection->transactionLevel()) {
             $this->connection->commit();
         }
+
+        CassandraClient::flattenNativeTypeData($out);
 
         return $out;
     }
@@ -589,7 +688,7 @@ class Table extends BaseNoSqlDbTableResource
         $params = [],
         $ss_filters = [],
         $avail_fields = []
-    ) {
+    ){
         // interpret any parameter values as lookups
         $params = (is_array($params) ? static::interpretRecordValues($params) : []);
         $serverFilter = $this->buildQueryStringFromData($ss_filters);
@@ -915,11 +1014,16 @@ class Table extends BaseNoSqlDbTableResource
             case DbSimpleTypes::TYPE_TIMESTAMP:
             case DbSimpleTypes::TYPE_TIMESTAMP_ON_CREATE:
             case DbSimpleTypes::TYPE_TIMESTAMP_ON_UPDATE:
-                $cfgFormat = Config::get('df.db_timestamp_format');
-                $outFormat = 'Y-m-d H:i:s';
-                $value = DataFormatter::formatDateTime($outFormat, $value, $cfgFormat);
+                $time = strtotime($value);
+                $value = new \Cassandra\Timestamp($time);
                 break;
-
+            case DbSimpleTypes::TYPE_UUID:
+                $value = new \Cassandra\Uuid($value);
+                break;
+            case DbSimpleTypes::TYPE_TIME_UUID:
+                $time = strtotime($value);
+                $value = new \Cassandra\Timeuuid($time);
+                break;
             default:
                 break;
         }
@@ -1182,20 +1286,44 @@ class Table extends BaseNoSqlDbTableResource
                 // add or override for specific fields
                 switch ($fieldInfo->type) {
                     case DbSimpleTypes::TYPE_UUID:
-                        $fieldVal = $record[$fieldInfo->getName(true)];
-                        $parsed[$fieldInfo->name] = new \Cassandra\Uuid($fieldVal);
+                        $fieldVal = array_get($record, $fieldInfo->getName(true));
+                        if (empty($fieldVal)) {
+                            if ($fieldInfo->getRequired() && !$for_update) {
+                                $parsed[$fieldInfo->name] = new \Cassandra\Uuid();
+                            }
+                        } else {
+                            $parsed[$fieldInfo->name] = new \Cassandra\Uuid($fieldVal);
+                        }
                         break;
                     case DbSimpleTypes::TYPE_TIME_UUID:
-                        $fieldVal = $record[$fieldInfo->getName(true)];
-                        $parsed[$fieldInfo->name] = new \Cassandra\Timeuuid($fieldVal);
+                        $fieldVal = array_get($record, $fieldInfo->getName(true));
+                        if (empty($fieldVal)) {
+                            if ($fieldInfo->getRequired() && !$for_update) {
+                                $parsed[$fieldInfo->name] = new \Cassandra\Timeuuid();
+                            }
+                        } else {
+                            $time = strtotime($fieldVal);
+                            $parsed[$fieldInfo->name] = new \Cassandra\Timeuuid($time);
+                        }
+                        break;
+                    case DbSimpleTypes::TYPE_TIMESTAMP:
+                        $fieldVal = array_get($record, $fieldInfo->getName(true));
+                        if (empty($fieldVal)) {
+                            if ($fieldInfo->getRequired() && !$for_update) {
+                                $parsed[$fieldInfo->name] = new \Cassandra\Timestamp();
+                            }
+                        } else {
+                            $time = strtotime($fieldVal);
+                            $parsed[$fieldInfo->name] = new \Cassandra\Timestamp($time);
+                        }
                         break;
                     case DbSimpleTypes::TYPE_TIMESTAMP_ON_CREATE:
                         if (!$for_update) {
-                            $parsed[$fieldInfo->name] = $this->getCurrentTimestamp();
+                            $parsed[$fieldInfo->name] = new \Cassandra\Timestamp();
                         }
                         break;
                     case DbSimpleTypes::TYPE_TIMESTAMP_ON_UPDATE:
-                        $parsed[$fieldInfo->name] = $this->getCurrentTimestamp();
+                        $parsed[$fieldInfo->name] = new \Cassandra\Timestamp();
                         break;
                     case DbSimpleTypes::TYPE_USER_ID_ON_CREATE:
                         if (!$for_update) {

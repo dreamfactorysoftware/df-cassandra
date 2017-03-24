@@ -1,7 +1,9 @@
 <?php
 namespace DreamFactory\Core\Cassandra\Components;
 
+use DreamFactory\Core\Enums\DbSimpleTypes;
 use DreamFactory\Core\Exceptions\InternalServerErrorException;
+use DreamFactory\Library\Utility\ArrayUtils;
 
 class CassandraClient
 {
@@ -185,7 +187,45 @@ class CassandraClient
         $statement = $this->prepareStatement($cql);
         $rows = $this->executeStatement($statement, $options);
 
-        return static::rowsToArray($rows, $pageInfo);
+        $result = static::rowsToArray($rows, $pageInfo);
+        static::flattenNativeTypeData($result);
+
+        return $result;
+    }
+
+    /**
+     * Converts data of native data type objects to plain (top level) data.
+     *
+     * @param array $rows
+     */
+    public static function flattenNativeTypeData(& $rows)
+    {
+        $nonNumeric = false;
+        if (!ArrayUtils::isArrayNumeric($rows)) {
+            $rows = [$rows];
+            $nonNumeric = true;
+        }
+        foreach ($rows as $key => $row) {
+            foreach ($row as $name => $value) {
+                if ($value instanceof \Cassandra\Uuid) {
+                    if ($value->type()->name() === DbSimpleTypes::TYPE_UUID) {
+                        $rows[$key][$name] = $value->uuid();
+                    }
+                } elseif ($value instanceof \Cassandra\Timestamp) {
+                    if ($value->type()->name() === DbSimpleTypes::TYPE_TIMESTAMP) {
+                        $outFormat = 'Y-m-d H:i:s';
+                        $rows[$key][$name] = date($outFormat, $value->time());
+                    }
+                } elseif ($value instanceof \Cassandra\Timeuuid) {
+                    if ($value->type()->name() === DbSimpleTypes::TYPE_TIME_UUID) {
+                        $rows[$key][$name] = $value->uuid();
+                    }
+                }
+            }
+        }
+        if ($nonNumeric) {
+            $rows = $rows[0];
+        }
     }
 
     /**
