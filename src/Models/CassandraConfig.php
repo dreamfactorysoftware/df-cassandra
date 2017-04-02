@@ -1,12 +1,12 @@
 <?php
 namespace DreamFactory\Core\Cassandra\Models;
 
-use DreamFactory\Core\Components\RequireExtensions;
+use DreamFactory\Core\Database\Components\SupportsUpsert;
 use DreamFactory\Core\Models\BaseServiceConfigModel;
 
 class CassandraConfig extends BaseServiceConfigModel
 {
-    use RequireExtensions;
+    use SupportsUpsert;
 
     protected $table = 'cassandra_config';
 
@@ -22,7 +22,7 @@ class CassandraConfig extends BaseServiceConfigModel
     protected $protected = ['password'];
 
     /**
-     * @param array $schema
+     * {@inheritdoc}
      */
     protected static function prepareConfigSchemaField(array &$schema)
     {
