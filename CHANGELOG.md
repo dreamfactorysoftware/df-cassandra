@@ -8,6 +8,10 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ### Fixed
 - DF-1077 Fixed support for UUID and Timestamp data types
 
+## [0.5.1] - 2017-04-11
+### Changed
+- Updated to better handle native types
+
 ## [0.5.0] - 2017-03-03
 - Major restructuring to upgrade to Laravel 5.4 and be more dynamically available
 
@@ -28,7 +32,8 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ## 0.1.0 - 2016-08-15
 First official release of this library.
 
-[Unreleased]: https://github.com/dreamfactorysoftware/df-cassandra/compare/0.5.0...HEAD
+[Unreleased]: https://github.com/dreamfactorysoftware/df-cassandra/compare/0.5.1...HEAD
+[0.5.1]: https://github.com/dreamfactorysoftware/df-cassandra/compare/0.5.0...0.5.1
 [0.5.0]: https://github.com/dreamfactorysoftware/df-cassandra/compare/0.4.0...0.5.0
 [0.4.0]: https://github.com/dreamfactorysoftware/df-cassandra/compare/0.3.0...0.4.0
 [0.3.0]: https://github.com/dreamfactorysoftware/df-cassandra/compare/0.2.0...0.3.0
