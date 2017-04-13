@@ -4,6 +4,8 @@ namespace DreamFactory\Core\Cassandra\Database\Schema;
 use DreamFactory\Core\Cassandra\Database\CassandraConnection;
 use DreamFactory\Core\Database\Schema\TableSchema;
 use DreamFactory\Core\Enums\DbSimpleTypes;
+use DreamFactory\Core\Exceptions\BadRequestException;
+use Ramsey\Uuid\Uuid;
 
 class Schema extends \DreamFactory\Core\Database\Components\Schema
 {
@@ -46,16 +48,24 @@ class Schema extends \DreamFactory\Core\Database\Components\Schema
         if (!empty($columns)) {
             foreach ($columns as $name => $column) {
                 $out[] = [
-                    'name'         => $name,
+                    'name'           => $name,
                     'is_primary_key' => (in_array($name, $pkNames)) ? true : false,
-                    'allow_null'    => true,
-                    'type'         => $column->type()->name(),
-                    'db_type'       => $column->type()->name(),
+                    'allow_null'     => true,
+                    'db_type'        => $column->type()->name(),
                 ];
             }
         }
 
         return $out;
+    }
+
+    protected function createColumn($column)
+    {
+        // add more here as we figure it out
+        $c = parent::createColumn($column);
+        $this->extractType($c, $c->dbType);
+
+        return $c;
     }
 
     /**
@@ -68,23 +78,25 @@ class Schema extends \DreamFactory\Core\Database\Components\Schema
      */
     protected function findTableNames($schema = '')
     {
-        $outTables = [];
         $client = $this->connection->getClient();
         $tables = $client->listTables();
         $schemaName = $client->getKeyspace()->name();
 
+        $defaultSchema = $this->getNamingSchema();
+        $addSchema = (!empty($schema) && ($defaultSchema !== $schema));
+
+        $names = [];
         foreach ($tables as $table) {
             $name = array_get($table, 'table_name');
-            $cTable = $client->getTable($name);
-            $primaryKey = array_get($cTable->primaryKey(), 0);
-            $outTables[strtolower($name)] = new TableSchema([
-                'schemaName' => $schemaName,
-                'name'       => $name,
-                'primaryKey' => $primaryKey->name()
-            ]);
+            $resourceName = $name;
+            $internalName = $schemaName . '.' . $resourceName;
+            $name = ($addSchema) ? $internalName : $resourceName;
+            $quotedName = $this->quoteTableName($schemaName) . '.' . $this->quoteTableName($resourceName);;
+            $settings = compact('schemaName', 'resourceName', 'name', 'internalName', 'quotedName');
+            $names[strtolower($name)] = new TableSchema($settings);
         }
 
-        return $outTables;
+        return $names;
     }
 
     /**
@@ -128,9 +140,7 @@ class Schema extends \DreamFactory\Core\Database\Components\Schema
             throw new \Exception('Unique and Primary designations not allowed simultaneously.');
         }
 
-        if ($isUniqueKey) {
-            $definition .= ' UNIQUE KEY';
-        } elseif ($isPrimaryKey) {
+        if ($isPrimaryKey) {
             $definition .= ' PRIMARY KEY';
         }
 
@@ -182,5 +192,182 @@ CQL;
         }
 
         return false;
+    }
+
+    public function typecastToClient($value, $field_info, $allow_null = true)
+    {
+        // handle object types returned by driver
+        if (is_object($value)) {
+            switch ($cassClass = get_class($value)) {
+                case 'Cassandra\Uuid': // constructs with same generated string
+                    $value = $value->uuid();
+                    break;
+                case 'Cassandra\Timeuuid': // construct( int $seconds )
+//                    $x = $value->time(); // seconds
+//                    $y = $value->toDateTime()->format('Y-m-d H:i:s.uO');
+                    $value = $value->uuid();
+                    break;
+                case 'Cassandra\Timestamp': // __construct ( int $seconds, int $microseconds )
+//                    $x = $value->time(); // seconds
+//                    $y = $value->microtime(false); // microseconds string '0.u seconds'
+//                    $z = $value->microtime(true); // string 'seconds.mil' milliseconds
+                    $milliseconds = (string)$value; // milliseconds string
+                    $add = '.' . substr($milliseconds, -3);
+
+                    // Their toDateTime drops millisecond accuracy, will add it back
+                    if (version_compare(PHP_VERSION, '7.0.0', '>=')) {
+                        $value = $value->toDateTime()->format('Y-m-d H:i:s.vO'); // milliseconds best accuracy
+                        $value = str_replace('.000', $add, $value);
+                    } else {
+                        $value = $value->toDateTime()->format('Y-m-d H:i:s.uO');
+                        $value = str_replace('.000000', $add, $value);
+                    }
+                    break;
+                case 'Cassandra\Date': // construct ( int $seconds)
+//                    $x = (string)$value; // crazy class name included
+//                    $y = $value->seconds();
+                    $value = $value->toDateTime()->format('Y-m-d');
+                    break;
+                case 'Cassandra\Time': // construct ( int $nanoseconds)
+                    // create DateTime using seconds and add the remainder nanoseconds
+                    $datetime = new \DateTime('@' . $value->seconds());
+                    $nanoseconds = (int)(string)$value; // nanoseconds
+                    $remainder = $nanoseconds % 1000000000;
+                    $value = $datetime->format('H:i:s') . '.' . str_pad($remainder, 9, '0', STR_PAD_LEFT);
+                    break;
+                case 'Cassandra\Blob':
+//                    $x = (string)$value; // hexadecimal string
+//                    $y = $value->bytes(); // hexadecimal string
+                    $value = $value->toBinaryString();
+                    break;
+                case 'Cassandra\Inet':
+                    $x = $value->address();
+                    $value = (string)$value;
+                    break;
+                case 'Cassandra\Decimal':
+//                    $x = $value->value(); // string value without scale
+//                    $scale = $value->scale();
+                    $value = (string)$value; // E notation?
+                    break;
+                case 'Cassandra\Float':
+//                    $x = $value->value(); // shortens based on float() behavior
+                    $value = (string)$value;
+                    break;
+                case 'Cassandra\Bigint':
+                case 'Cassandra\Varint':
+                    $value = $value->value(); // should be string as these are typically too large for PHP
+                    break;
+                case 'Cassandra\Smallint':
+                case 'Cassandra\Tinyint':
+                    $value = $value->value();
+                    break;
+            }
+        }
+
+        return parent::typecastToClient($value, $field_info, $allow_null);
+    }
+
+    public function typecastToNative($value, $field_info, $allow_null = true)
+    {
+        if (is_null($value) && $field_info->allowNull) {
+            return null;
+        }
+
+        switch ($field_info->type) {
+            // datetime and such
+            case DbSimpleTypes::TYPE_DATE:
+                if (is_numeric($value)) {
+                    return new \Cassandra\Date((int)$value); // must be seconds, check doc as this is weird
+                } else {
+                    return \Cassandra\Date::fromDateTime(new \DateTime($value));
+                }
+                break;
+            case DbSimpleTypes::TYPE_TIME:
+                if (is_numeric($value)) {
+                    return new \Cassandra\Time($value); // must be nanoseconds
+                } else {
+                    if (false !== $pos = strpos($value, '.')) {
+                        // string may include nanoseconds
+                        $seconds = substr($value, 0, $pos);
+                        $nano = substr($value, $pos + 1);
+                        $seconds = strtotime('1970-01-01 ' . $seconds);
+                        $nanoseconds = $seconds . str_pad($nano, 9, '0', STR_PAD_RIGHT);
+
+                        return new \Cassandra\Time($nanoseconds);
+                    } else {
+                        return \Cassandra\Time::fromDateTime(new \DateTime($value));
+                    }
+                }
+                break;
+            case DbSimpleTypes::TYPE_TIMESTAMP:
+                if (is_numeric($value)) {
+                    return new \Cassandra\Timestamp((int)$value); // must be seconds
+                } elseif (empty($value) || (0 === strcasecmp($value, 'now()'))) {
+                    return new \Cassandra\Timestamp();
+                } elseif (false !== $seconds = strtotime($value)) {
+                    // may have lost millisecond precision here, see if we can make up for it
+                    $microseconds = 0;
+                    if (false !== $pos = strpos($value, '.')) {
+                        $len = (false !== $plus = strpos($value, '+')) ? $plus - ($pos + 1) : null;
+                        $micro = '0.' . substr($value, $pos + 1, $len);
+                        $microseconds = floatval($micro) * 1000000;
+                    }
+
+                    return new \Cassandra\Timestamp($seconds, $microseconds);
+                }
+                break;
+            case DbSimpleTypes::TYPE_TIME_UUID:
+                if (is_numeric($value)) {
+                    return new \Cassandra\Timeuuid((int)$value); // must be seconds
+                } elseif (empty($value) || (0 === strcasecmp($value, 'now()'))) {
+                    return new \Cassandra\Timeuuid();
+                } elseif (false !== $seconds = strtotime($value)) {
+                    return new \Cassandra\Timeuuid($seconds);
+                } else {
+                    throw new BadRequestException('TIME UUID type can only be set with null, or seconds, or valid formatted time.');
+                }
+                break;
+            case DbSimpleTypes::TYPE_UUID:
+                if (empty($value) || (0 === strcasecmp($value, 'uuid()'))) {
+                    return new \Cassandra\Uuid(Uuid::uuid4());
+                } else {
+                    return new \Cassandra\Uuid($value);
+                }
+            case DbSimpleTypes::TYPE_BINARY:
+                return new \Cassandra\Blob((string)$value);
+
+            // some fancy numbers
+            case DbSimpleTypes::TYPE_BIG_INT:
+                if (0 === strcasecmp('varint', $field_info->dbType)) {
+                    return new \Cassandra\Varint((string)$value);
+                } else {
+                    return new \Cassandra\Bigint((string)$value);
+                }
+            case DbSimpleTypes::TYPE_DECIMAL:
+                return new \Cassandra\Decimal((string)$value);
+            case DbSimpleTypes::TYPE_FLOAT:
+                return new \Cassandra\Float($value);
+            case DbSimpleTypes::TYPE_SMALL_INT:
+                return new \Cassandra\Smallint($value);
+            case DbSimpleTypes::TYPE_TINY_INT:
+                return new \Cassandra\Tinyint($value);
+            case DbSimpleTypes::TYPE_INTEGER:
+                if (0 === strcasecmp('smallint', $field_info->dbType)) {
+                    return new \Cassandra\Smallint($value);
+                }
+                if (0 === strcasecmp('tinyint', $field_info->dbType)) {
+                    return new \Cassandra\Tinyint($value);
+                }
+                break;
+
+            // catch any other weird ones
+            case DbSimpleTypes::TYPE_STRING:
+                if (0 === strcasecmp('inet', $field_info->dbType)) {
+                    return new \Cassandra\Inet((string)$value);
+                }
+                break;
+        }
+
+        return parent::typecastToNative($value, $field_info, $allow_null);
     }
 }
