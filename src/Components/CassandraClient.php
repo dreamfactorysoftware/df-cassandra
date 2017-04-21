@@ -1,9 +1,7 @@
 <?php
 namespace DreamFactory\Core\Cassandra\Components;
 
-use DreamFactory\Core\Enums\DbSimpleTypes;
 use DreamFactory\Core\Exceptions\InternalServerErrorException;
-use DreamFactory\Library\Utility\ArrayUtils;
 
 class CassandraClient
 {
