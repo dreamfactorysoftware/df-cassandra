@@ -264,7 +264,7 @@ CQL;
             }
         }
 
-        return parent::formatValue($value, $field_info->phpType);
+        return parent::typecastToClient($value, $field_info, $allow_null);
     }
 
     public function typecastToNative($value, $field_info, $allow_null = true)
@@ -368,6 +368,6 @@ CQL;
                 break;
         }
 
-        return parent::parseValueForSet($value, $field_info);
+        return parent::typecastToNative($value, $field_info, $allow_null);
     }
 }

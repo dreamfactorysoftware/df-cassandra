@@ -10,7 +10,6 @@ use DreamFactory\Core\Database\Schema\TableSchema;
 use DreamFactory\Core\Enums\ApiOptions;
 use DreamFactory\Core\Enums\DbLogicalOperators;
 use DreamFactory\Core\Enums\DbComparisonOperators;
-use DreamFactory\Core\Enums\DbSimpleTypes;
 use DreamFactory\Core\Exceptions\BadRequestException;
 use DreamFactory\Core\Exceptions\BatchException;
 use DreamFactory\Core\Exceptions\InternalServerErrorException;
@@ -67,7 +66,7 @@ class Table extends BaseDbTableResource
             if (!empty($relatedInfo)) {
                 // update related info
                 foreach ($results as $row) {
-                    static::checkForIds($row, $idsInfo, $extras);
+                    $this->checkForIds($row, $idsInfo, $extras);
                     $this->updatePostRelations($table, array_merge($row, $record), $relatedInfo, $allowRelatedDelete);
                 }
                 // get latest with related changes if requested
@@ -746,14 +745,6 @@ class Table extends BaseDbTableResource
     }
 
     /**
-     * @inheritdoc
-     */
-    protected function parseValueForSet($value, $field_info, $for_update = false)
-    {
-        return $this->schema->typecastToNative($value, $field_info, $for_update);
-    }
-
-    /**
      * @param      $table
      * @param null $fields_info
      * @param null $requested_fields
@@ -784,99 +775,6 @@ class Table extends BaseDbTableResource
         }
 
         return $idsInfo;
-    }
-
-    /**
-     * @param array          $record
-     * @param ColumnSchema[] $ids_info
-     * @param null           $extras
-     * @param bool           $on_create
-     * @param bool           $remove
-     *
-     * @return array|bool|int|mixed|null|string
-     */
-    protected static function checkForIds(&$record, $ids_info, $extras = null, $on_create = false, $remove = false)
-    {
-        $id = null;
-        if (!empty($ids_info)) {
-            if (1 == count($ids_info)) {
-                $info = $ids_info[0];
-                $name = $info->getName(true);
-                if (is_array($record)) {
-                    $value = array_get($record, $name);
-                    if ($remove) {
-                        unset($record[$name]);
-                    }
-                } else {
-                    $value = $record;
-                }
-                if (!is_null($value)) {
-                    if (!is_array($value)) {
-                        switch ($info->type) {
-                            case DbSimpleTypes::TYPE_INTEGER:
-                                $value = intval($value);
-                                break;
-                            case DbSimpleTypes::TYPE_STRING:
-                                $value = strval($value);
-                                break;
-                            case DbSimpleTypes::TYPE_UUID:
-                                $value = new \Cassandra\Uuid($value);
-                                break;
-                        }
-                    }
-                    $id = $value;
-                } else {
-                    // could be passed in as a parameter affecting all records
-                    $param = array_get($extras, $name);
-                    if ($on_create && $info->getRequired() && empty($param)) {
-                        return false;
-                    }
-                }
-            } else {
-                $id = [];
-                foreach ($ids_info as $info) {
-                    $name = $info->getName(true);
-                    if (is_array($record)) {
-                        $value = array_get($record, $name);
-                        if ($remove) {
-                            unset($record[$name]);
-                        }
-                    } else {
-                        $value = $record;
-                    }
-                    if (!is_null($value)) {
-                        if (!is_array($value)) {
-                            switch ($info->type) {
-                                case DbSimpleTypes::TYPE_INTEGER:
-                                    $value = intval($value);
-                                    break;
-                                case DbSimpleTypes::TYPE_STRING:
-                                    $value = strval($value);
-                                    break;
-                                case DbSimpleTypes::TYPE_UUID:
-                                    $value = new \Cassandra\Uuid($value);
-                                    break;
-                            }
-                        }
-                        $id[$name] = $value;
-                    } else {
-                        // could be passed in as a parameter affecting all records
-                        $param = array_get($extras, $name);
-                        if ($on_create && $info->getRequired() && empty($param)) {
-                            return false;
-                        }
-                    }
-                }
-            }
-        }
-
-        if (!is_null($id)) {
-            return $id;
-        } elseif ($on_create) {
-            return null;
-        }
-
-        return false;
     }
 
     /**
@@ -963,22 +861,27 @@ class Table extends BaseDbTableResource
                     throw new InternalServerErrorException("Record insert failed.");
                 }
 
+                $idName = (isset($this->tableIdsInfo, $this->tableIdsInfo[0], $this->tableIdsInfo[0]->name))
+                    ? $this->tableIdsInfo[0]->name : null;
+                // take care to return auto created id values
+                if (is_string($id) && $idName &&
+                    ((0 === strcasecmp($id, 'uuid()')) || (0 === strcasecmp($id, 'now()')))
+                ) {
+                    if ($newId = array_get($parsed, $idName)) {
+                        switch (get_class($newId)) {
+                            case 'Cassandra\Uuid':
+                            case 'Cassandra\Timeuuid': // construct( int $seconds )
+                                $id = $newId->uuid();
+                                break;
+                        }
+                    }
+                }
+                $out = (is_array($id)) ? $id : [$idName => $id];
+
                 // add via record, so batch processing can retrieve extras
                 if ($requireMore) {
                     parent::addToTransaction($id);
                 }
-
-                if (is_object($id)) {
-                    switch (get_class($id)) {
-                        case 'Cassandra\Uuid':
-                        case 'Cassandra\Timeuuid':
-                            $id = $id->uuid();
-                            break;
-                    }
-                }
-                $idName = (isset($this->tableIdsInfo, $this->tableIdsInfo[0], $this->tableIdsInfo[0]->name))
-                    ? $this->tableIdsInfo[0]->name : null;
-                $out = (is_array($id)) ? $id : [$idName => $id];
                 break;
 
             case Verbs::PUT:
@@ -992,13 +895,19 @@ class Table extends BaseDbTableResource
 
                 $parsed = $this->parseRecord($record, $this->tableFieldsInfo, $ssFilters, true);
                 if (!empty($parsed)) {
-                    $rows = $builder->update($parsed);
-                    if (0 >= $rows) {
-                        // could have just not updated anything, or could be bad id
-                        if (empty($this->runQuery($this->transactionTable, $builder, $extras))) {
-                            throw new NotFoundException("Record with identifier '" .
-                                print_r($id, true) .
-                                "' not found.");
+                    if (!empty($match) && $this->parent->upsertAllowed() && !$builder->exists()) {
+                        if ($builder->insert(array_merge($match, $parsed))) {
+                            throw new InternalServerErrorException("Record upsert failed.");
+                        }
+                    } else {
+                        $rows = $builder->update($parsed);
+                        if (0 >= $rows) {
+                            // could have just not updated anything, or could be bad id
+                            if (empty($this->runQuery($this->transactionTable, $builder, $extras))) {
+                                throw new NotFoundException("Record with identifier '" .
+                                    print_r($id, true) .
+                                    "' not found.");
+                            }
                         }
                     }
                 }
@@ -1010,23 +919,15 @@ class Table extends BaseDbTableResource
                     }
                 }
 
-                // add via record, so batch processing can retrieve extras
-                if ($requireMore) {
-                    parent::addToTransaction($id);
-                }
-
-                if (is_object($id)) {
-                    switch (get_class($id)) {
-                        case 'Cassandra\Uuid':
-                        case 'Cassandra\Timeuuid':
-                            $id = $id->uuid();
-                            break;
-                    }
-                }
                 $idName =
                     (isset($this->tableIdsInfo, $this->tableIdsInfo[0], $this->tableIdsInfo[0]->name))
                         ? $this->tableIdsInfo[0]->name : null;
                 $out = (is_array($id)) ? $id : [$idName => $id];
+
+                // add via record, so batch processing can retrieve extras
+                if ($requireMore) {
+                    parent::addToTransaction($id);
+                }
                 break;
 
             case Verbs::DELETE:
@@ -1055,14 +956,6 @@ class Table extends BaseDbTableResource
                 }
 
                 if (empty($out)) {
-                    if (is_object($id)) {
-                        switch (get_class($id)) {
-                            case 'Cassandra\Uuid':
-                            case 'Cassandra\Timeuuid':
-                                $id = $id->uuid();
-                                break;
-                        }
-                    }
                     $idName =
                         (isset($this->tableIdsInfo, $this->tableIdsInfo[0], $this->tableIdsInfo[0]->name))
                             ? $this->tableIdsInfo[0]->name : null;
