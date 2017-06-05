@@ -17,8 +17,7 @@ use DreamFactory\Core\Exceptions\NotFoundException;
 use DreamFactory\Core\Exceptions\RestException;
 use DreamFactory\Core\SqlDb\Components\TableDescriber;
 use DreamFactory\Core\Utility\Session;
-use DreamFactory\Library\Utility\Enums\Verbs;
-use DreamFactory\Library\Utility\Scalar;
+use DreamFactory\Core\Enums\Verbs;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Query\Builder;
 
@@ -40,7 +39,7 @@ class Table extends BaseDbTableResource
         $idFields = array_get($extras, ApiOptions::ID_FIELD);
         $idTypes = array_get($extras, ApiOptions::ID_TYPE);
         $related = array_get($extras, ApiOptions::RELATED);
-        $allowRelatedDelete = Scalar::boolval(array_get($extras, ApiOptions::ALLOW_RELATED_DELETE));
+        $allowRelatedDelete = array_get_bool($extras, ApiOptions::ALLOW_RELATED_DELETE);
         $ssFilters = array_get($extras, 'ss_filters');
 
         try {
@@ -207,8 +206,8 @@ class Table extends BaseDbTableResource
 
         $limit = intval(array_get($extras, ApiOptions::LIMIT, 0));
         $offset = intval(array_get($extras, ApiOptions::OFFSET, 0));
-        $countOnly = Scalar::boolval(array_get($extras, ApiOptions::COUNT_ONLY));
-        $includeCount = Scalar::boolval(array_get($extras, ApiOptions::INCLUDE_COUNT));
+        $countOnly = array_get_bool($extras, ApiOptions::COUNT_ONLY);
+        $includeCount = array_get_bool($extras, ApiOptions::INCLUDE_COUNT);
 
         $maxAllowed = static::getMaxRecordsReturnedLimit();
         $needLimit = false;
@@ -275,7 +274,7 @@ class Table extends BaseDbTableResource
             }
         }
 
-        if (Scalar::boolval(array_get($extras, ApiOptions::INCLUDE_SCHEMA))) {
+        if (array_get_bool($extras, ApiOptions::INCLUDE_SCHEMA)) {
             try {
                 $meta['schema'] = $schema->toArray(true);
             } catch (RestException $ex) {
@@ -819,7 +818,7 @@ class Table extends BaseDbTableResource
         $needToIterate = ($single || !$continue || (1 < count($this->tableIdsInfo)));
 
         $related = array_get($extras, 'related');
-        $requireMore = Scalar::boolval(array_get($extras, 'require_more')) || !empty($related);
+        $requireMore = array_get_bool($extras, 'require_more') || !empty($related);
 
         $builder = $this->dbConn->table($this->transactionTableSchema->internalName);
         $match = [];
@@ -996,7 +995,7 @@ class Table extends BaseDbTableResource
         $updates = array_get($extras, 'updates');
         $ssFilters = array_get($extras, 'ss_filters');
         $related = array_get($extras, 'related');
-        $requireMore = Scalar::boolval(array_get($extras, 'require_more')) || !empty($related);
+        $requireMore = array_get_bool($extras, 'require_more') || !empty($related);
 
         $builder = $this->dbConn->table($this->transactionTableSchema->internalName);
 
