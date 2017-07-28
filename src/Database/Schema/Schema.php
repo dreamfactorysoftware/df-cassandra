@@ -12,8 +12,6 @@ class Schema extends \DreamFactory\Core\Database\Components\Schema
     /** @var  CassandraConnection */
     protected $connection;
 
-    const PROVIDES_FIELD_SCHEMA = true;
-
     /**
      * Quotes a string value for use in a query.
      *

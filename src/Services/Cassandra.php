@@ -34,17 +34,13 @@ class Cassandra extends BaseDbService
     {
         parent::__construct($settings);
 
-        $config = array_get($settings, 'config');
-        $config = (empty($config) ? [] : (!is_array($config) ? [$config] : $config));
-        Session::replaceLookups($config, true);
-        $config['driver'] = 'cassandra';
+        $this->config['driver'] = 'cassandra';
+    }
 
-        if (empty($config)) {
-            throw new InternalServerErrorException('No service configuration found for Cassandra.');
-        }
-
+    protected function initializeConnection()
+    {
         // add config to global for reuse, todo check existence and update?
-        config(['database.connections.service.' . $this->name => $config]);
+        config(['database.connections.service.' . $this->name => $this->config]);
         /** @type DatabaseManager $db */
         $db = app('db');
         $this->dbConn = $db->connection('service.' . $this->name);
