@@ -4,10 +4,8 @@ namespace DreamFactory\Core\Cassandra\Services;
 use DreamFactory\Core\Cassandra\Database\Schema\Schema;
 use DreamFactory\Core\Cassandra\Resources\Table;
 use DreamFactory\Core\Components\RequireExtensions;
-use DreamFactory\Core\Exceptions\InternalServerErrorException;
 use DreamFactory\Core\Database\Resources\DbSchemaResource;
 use DreamFactory\Core\Database\Services\BaseDbService;
-use DreamFactory\Core\Utility\Session;
 use Illuminate\Database\DatabaseManager;
 
 class Cassandra extends BaseDbService
@@ -45,7 +43,5 @@ class Cassandra extends BaseDbService
         $db = app('db');
         $this->dbConn = $db->connection('service.' . $this->name);
         $this->schema = new Schema($this->dbConn);
-        $this->schema->setCache($this);
-        $this->schema->setExtraStore($this);
     }
 }
