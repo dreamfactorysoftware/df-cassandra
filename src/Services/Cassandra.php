@@ -33,6 +33,14 @@ class Cassandra extends BaseDbService
         parent::__construct($settings);
 
         $this->config['driver'] = 'cassandra';
+
+        $prefix = '';
+        $parts = ['hosts', 'port', 'username', 'keyspace'];
+        foreach ($parts as $part) {
+            $prefix .= array_get($this->config, $part);
+        }
+
+        $this->setConfigBasedCachePrefix($prefix . ':');
     }
 
     protected function initializeConnection()
