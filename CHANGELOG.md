@@ -3,6 +3,8 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
+### Added
+- Support list, set, map, and tuple data types
 
 ## [0.9.0] - 2017-08-17
 ### Changed

@@ -1,4 +1,5 @@
 <?php
+
 namespace DreamFactory\Core\Cassandra\Database\Schema;
 
 use DreamFactory\Core\Cassandra\Database\CassandraConnection;
@@ -49,7 +50,7 @@ class Schema extends \DreamFactory\Core\Database\Components\Schema
                     'name'           => $name,
                     'is_primary_key' => (in_array($name, $pkNames)) ? true : false,
                     'allow_null'     => true,
-                    'db_type'        => $column->type()->name(),
+                    'db_type'        => (string)$column->type(),
                 ];
             }
         }
@@ -194,6 +195,24 @@ CQL;
 
     public function typecastToClient($value, $field_info, $allow_null = true)
     {
+        return parent::typecastToClient($this->unwrapNativeType($value), $field_info, $allow_null);
+    }
+
+    public function typecastToNative($value, $field_info, $allow_null = true)
+    {
+        if (is_null($value) && $field_info->allowNull) {
+            return null;
+        }
+
+        if ($obj = $this->convertToNativeType($value, $field_info->dbType)) {
+            return $obj;
+        }
+
+        return parent::typecastToNative($value, $field_info, $allow_null);
+    }
+
+    protected function unwrapNativeType($value)
+    {
         // handle object types returned by driver
         if (is_object($value)) {
             switch ($cassClass = get_class($value)) {
@@ -239,7 +258,7 @@ CQL;
                     $value = $value->toBinaryString();
                     break;
                 case 'Cassandra\Inet':
-                    $x = $value->address();
+//                    $x = $value->address();
                     $value = (string)$value;
                     break;
                 case 'Cassandra\Decimal':
@@ -259,19 +278,53 @@ CQL;
                 case 'Cassandra\Tinyint':
                     $value = $value->value();
                     break;
+                case 'Cassandra\Collection': // aka List type
+                    $out = [];
+                    foreach ($value->values() as $val) {
+                        $out[] = $this->typecastToClient($val, $value->type()->valueType()->name());
+                    }
+                    $value = $out;
+                    break;
+                case 'Cassandra\Set':
+                    $out = [];
+                    foreach ($value->values() as $val) {
+                        $out[] = $this->typecastToClient($val, $value->type()->valueType()->name());
+                    }
+                    $value = $out;
+                    break;
+                case 'Cassandra\Tuple':
+                    $out = [];
+                    $types = $value->type()->types();
+                    foreach ($value->values() as $ndx => $val) {
+                        $out[] = $this->typecastToClient($val, $types[$ndx]->name());
+                    }
+                    $value = $out;
+                    break;
+                case 'Cassandra\Map':
+                    $out = [];
+                    $keys = $value->keys();
+                    foreach ($value->values() as $ndx => $val) {
+                        $out[$this->typecastToClient($keys[$ndx],
+                            $value->type()->keyType()->name())] = $this->typecastToClient($val,
+                            $value->type()->valueType()->name());
+                    }
+                    $value = $out;
+                    break;
             }
         }
 
-        return parent::typecastToClient($value, $field_info, $allow_null);
+        return $value;
     }
 
-    public function typecastToNative($value, $field_info, $allow_null = true)
+    protected function convertToNativeType($value, $type)
     {
-        if (is_null($value) && $field_info->allowNull) {
-            return null;
+        $simpleType = $type;
+        $extra = null;
+        if (false !== $pos = strpos($type, '<')) {
+            $simpleType = substr($type, 0, $pos);
+            $extra = substr($type, $pos + 1, -1); // strip outer <>
         }
-
-        switch ($field_info->type) {
+        switch (strtolower($simpleType)) {
             // datetime and such
             case DbSimpleTypes::TYPE_DATE:
                 if (is_numeric($value)) {
@@ -335,12 +388,10 @@ CQL;
                 return new \Cassandra\Blob((string)$value);
 
             // some fancy numbers
+            case 'var_int':
+                return new \Cassandra\Varint((string)$value);
             case DbSimpleTypes::TYPE_BIG_INT:
-                if (0 === strcasecmp('varint', $field_info->dbType)) {
-                    return new \Cassandra\Varint((string)$value);
-                } else {
-                    return new \Cassandra\Bigint((string)$value);
-                }
+                return new \Cassandra\Bigint((string)$value);
             case DbSimpleTypes::TYPE_DECIMAL:
                 return new \Cassandra\Decimal((string)$value);
             case DbSimpleTypes::TYPE_FLOAT:
@@ -349,23 +400,68 @@ CQL;
                 return new \Cassandra\Smallint($value);
             case DbSimpleTypes::TYPE_TINY_INT:
                 return new \Cassandra\Tinyint($value);
-            case DbSimpleTypes::TYPE_INTEGER:
-                if (0 === strcasecmp('smallint', $field_info->dbType)) {
-                    return new \Cassandra\Smallint($value);
+            case 'list':
+                $obj = new \Cassandra\Collection($extra);
+                foreach ($value as $val) {
+                    if (is_object($val)) {
+                        $newVal = $this->convertToNativeType($val, $extra);
+                        if (!is_null($newVal)) { // collections don't allow null values
+                            $val = $newVal;
+                        }
+                    }
+                    $obj->add($val);
                 }
-                if (0 === strcasecmp('tinyint', $field_info->dbType)) {
-                    return new \Cassandra\Tinyint($value);
+
+                return $obj;
+            case 'set':
+                $obj = new \Cassandra\Set($extra);
+                foreach ($value as $val) {
+                    if (is_object($val)) {
+                        $newVal = $this->convertToNativeType($val, $extra);
+                        if (!is_null($newVal)) { // collections don't allow null values
+                            $val = $newVal;
+                        }
+                    }
+                    $obj->add($val);
                 }
+
+                return $obj;
+            case 'tuple':
+                throw new BadRequestException('Tuple data type not currently supported for write.');
                 break;
+//                        $types = strtolower(strstr($field_info->dbType, '<'));
+//                        $obj = new \Cassandra\Tuple($types);
+//
+//                        return $obj;
+//                $tupleType = \Cassandra\Type::tuple(\Cassandra\Type::text(), \Cassandra\Type::text(),
+//                    \Cassandra\Type::int());
+//                $tupleType->create('Phoenix', '9042 Cassandra Lane', 85023)
+            case 'map':
+                $types = array_map('trim', explode(',', strtolower($extra)));
+                $obj = new \Cassandra\Map($types[0], $types[1]);
+                foreach ($value as $key => $val) {
+                    if (is_object($key)) {
+                        $newKey = $this->convertToNativeType($key, $types[0]);
+                        if (!is_null($newKey)) { // collections don't allow null values
+                            $key = $newKey;
+                        }
+                    }
+                    if (is_object($val)) {
+                        $newVal = $this->convertToNativeType($val, $types[1]);
+                        if (!is_null($newVal)) { // collections don't allow null values
+                            $val = $newVal;
+                        }
+                    }
+                    $obj->set($key, $val);
+                }
+
+                return $obj;
 
             // catch any other weird ones
-            case DbSimpleTypes::TYPE_STRING:
-                if (0 === strcasecmp('inet', $field_info->dbType)) {
-                    return new \Cassandra\Inet((string)$value);
-                }
-                break;
+            case 'inet':
+                return new \Cassandra\Inet((string)$value);
         }
 
-        return parent::typecastToNative($value, $field_info, $allow_null);
+        return null;
     }
 }
