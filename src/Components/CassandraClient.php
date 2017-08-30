@@ -167,7 +167,7 @@ class CassandraClient
     public function executeStatement($statement, array $options = [])
     {
         if (!empty($options)) {
-            return $this->session->execute($statement, new \Cassandra\ExecutionOptions($options));
+            return $this->session->execute($statement, $options);
         } else {
             return $this->session->execute($statement);
         }
