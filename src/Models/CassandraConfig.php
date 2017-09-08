@@ -1,12 +1,12 @@
 <?php
 namespace DreamFactory\Core\Cassandra\Models;
 
-use DreamFactory\Core\Database\Components\SupportsUpsert;
+use DreamFactory\Core\Database\Components\SupportsUpsertAndCache;
 use DreamFactory\Core\Models\BaseServiceConfigModel;
 
 class CassandraConfig extends BaseServiceConfigModel
 {
-    use SupportsUpsert;
+    use SupportsUpsertAndCache;
 
     protected $table = 'cassandra_config';
 
