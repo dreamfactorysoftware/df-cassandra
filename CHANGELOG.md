@@ -4,6 +4,12 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.0] - 2017-09-18
+### Added
+- DF-1060 Support for data retrieval (GET) caching and configuration
+### Fixed
+- Cleanup primary and unique key handling
+
 ## [0.9.1] - 2017-08-30
 ### Added
 - Support list, set, map, and tuple data types
@@ -59,7 +65,8 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ## 0.1.0 - 2016-08-15
 First official release of this library.
 
-[Unreleased]: https://github.com/dreamfactorysoftware/df-cassandra/compare/0.9.1...HEAD
+[Unreleased]: https://github.com/dreamfactorysoftware/df-cassandra/compare/0.10.0...HEAD
+[0.10.0]: https://github.com/dreamfactorysoftware/df-cassandra/compare/0.9.1...0.10.0
 [0.9.1]: https://github.com/dreamfactorysoftware/df-cassandra/compare/0.9.0...0.9.1
 [0.9.0]: https://github.com/dreamfactorysoftware/df-cassandra/compare/0.8.0...0.9.0
 [0.8.0]: https://github.com/dreamfactorysoftware/df-cassandra/compare/0.7.0...0.8.0
