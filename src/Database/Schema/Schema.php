@@ -81,15 +81,12 @@ class Schema extends \DreamFactory\Core\Database\Components\Schema
         $tables = $client->listTables();
         $schemaName = $client->getKeyspace()->name();
 
-        $defaultSchema = $this->getNamingSchema();
-        $addSchema = (!empty($schema) && ($defaultSchema !== $schema));
-
         $names = [];
         foreach ($tables as $table) {
             $name = array_get($table, 'table_name');
             $resourceName = $name;
             $internalName = $schemaName . '.' . $resourceName;
-            $name = ($addSchema) ? $internalName : $resourceName;
+            $name = $resourceName;
             $quotedName = $this->quoteTableName($schemaName) . '.' . $this->quoteTableName($resourceName);;
             $settings = compact('schemaName', 'resourceName', 'name', 'internalName', 'quotedName');
             $names[strtolower($name)] = new TableSchema($settings);
