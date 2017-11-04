@@ -1,4 +1,5 @@
 <?php
+
 namespace DreamFactory\Core\Cassandra\Models;
 
 use DreamFactory\Core\Database\Components\SupportsUpsertAndCache;
@@ -14,6 +15,7 @@ class CassandraConfig extends BaseServiceConfigModel
 
     protected $casts = [
         'service_id' => 'integer',
+        'port'       => 'integer',
         'options'    => 'array'
     ];
 

@@ -3,6 +3,10 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
+## [0.11.0] - 2017-11-03
+### Changed
+- Move preferred schema naming to service level
+- Fix port casting as integer
 
 ## [0.10.0] - 2017-09-18
 ### Added
@@ -65,7 +69,8 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ## 0.1.0 - 2016-08-15
 First official release of this library.
 
-[Unreleased]: https://github.com/dreamfactorysoftware/df-cassandra/compare/0.10.0...HEAD
+[Unreleased]: https://github.com/dreamfactorysoftware/df-cassandra/compare/0.11.0...HEAD
+[0.11.0]: https://github.com/dreamfactorysoftware/df-cassandra/compare/0.10.0...0.11.0
 [0.10.0]: https://github.com/dreamfactorysoftware/df-cassandra/compare/0.9.1...0.10.0
 [0.9.1]: https://github.com/dreamfactorysoftware/df-cassandra/compare/0.9.0...0.9.1
 [0.9.0]: https://github.com/dreamfactorysoftware/df-cassandra/compare/0.8.0...0.9.0
