@@ -653,13 +653,13 @@ class Table extends BaseDbTableResource
      */
     protected function parseSelect($schema, $extras)
     {
-        $idFields = array_get($extras, ApiOptions::ID_FIELD);
-        if (empty($idFields)) {
-            $idFields = $schema->primaryKey;
-        }
-        $idFields = static::fieldsToArray($idFields);
         $fields = array_get($extras, ApiOptions::FIELDS);
         if (empty($fields)) {
+            // minimally return id fields
+            $idFields = array_get($extras, ApiOptions::ID_FIELD);
+            if (empty($idFields)) {
+                $idFields = $schema->primaryKey;
+            }
             $fields = $idFields;
         }
         $fields = static::fieldsToArray($fields);
