@@ -3,6 +3,10 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
+## [0.12.1] - 2018-01-25
+### Changed
+- Adhere to base database changes
+
 ## [0.12.0] - 2017-12-28
 ### Added
 - DF-1224 Added ability to set different default limits (max_records_returned) per service
@@ -77,7 +81,8 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ## 0.1.0 - 2016-08-15
 First official release of this library.
 
-[Unreleased]: https://github.com/dreamfactorysoftware/df-cassandra/compare/0.12.0...HEAD
+[Unreleased]: https://github.com/dreamfactorysoftware/df-cassandra/compare/0.12.1...HEAD
+[0.12.1]: https://github.com/dreamfactorysoftware/df-cassandra/compare/0.12.0...0.12.1
 [0.12.0]: https://github.com/dreamfactorysoftware/df-cassandra/compare/0.11.0...0.12.0
 [0.11.0]: https://github.com/dreamfactorysoftware/df-cassandra/compare/0.10.0...0.11.0
 [0.10.0]: https://github.com/dreamfactorysoftware/df-cassandra/compare/0.9.1...0.10.0
