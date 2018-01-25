@@ -3,6 +3,7 @@
 namespace DreamFactory\Core\Cassandra\Database\Schema;
 
 use DreamFactory\Core\Cassandra\Database\CassandraConnection;
+use DreamFactory\Core\Database\Schema\ColumnSchema;
 use DreamFactory\Core\Database\Schema\TableSchema;
 use DreamFactory\Core\Enums\DbSimpleTypes;
 use DreamFactory\Core\Exceptions\BadRequestException;
@@ -33,7 +34,7 @@ class Schema extends \DreamFactory\Core\Database\Components\Schema
     /**
      * @inheritdoc
      */
-    protected function findColumns(TableSchema $table)
+    protected function loadTableColumns(TableSchema $table)
     {
         $cTable = $this->connection->getClient()->getTable($table->name);
         $columns = $cTable->columns();
@@ -43,28 +44,19 @@ class Schema extends \DreamFactory\Core\Database\Components\Schema
             $pkNames[] = $pk->name();
         }
 
-        $out = [];
         if (!empty($columns)) {
             foreach ($columns as $name => $column) {
-                $out[] = [
+                $c = new ColumnSchema([
                     'name'           => $name,
                     'is_primary_key' => (in_array($name, $pkNames)) ? true : false,
                     'allow_null'     => true,
                     'db_type'        => (string)$column->type(),
-                ];
+                ]);
+                $c->quotedName = $this->quoteColumnName($c->name);
+
+                $this->extractType($c, $c->dbType);
             }
         }
-
-        return $out;
-    }
-
-    protected function createColumn($column)
-    {
-        // add more here as we figure it out
-        $c = parent::createColumn($column);
-        $this->extractType($c, $c->dbType);
-
-        return $c;
     }
 
     /**
@@ -75,7 +67,7 @@ class Schema extends \DreamFactory\Core\Database\Components\Schema
      *
      * @return array all table names in the database.
      */
-    protected function findTableNames($schema = '')
+    protected function getTableNames($schema = '')
     {
         $client = $this->connection->getClient();
         $tables = $client->listTables();
