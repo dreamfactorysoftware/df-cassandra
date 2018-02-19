@@ -3,6 +3,9 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
+### Fixed
+- Fix column discovery 
+
 ## [0.12.1] - 2018-01-25
 ### Changed
 - Adhere to base database changes
