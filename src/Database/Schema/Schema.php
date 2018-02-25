@@ -53,8 +53,8 @@ class Schema extends \DreamFactory\Core\Database\Components\Schema
                     'db_type'        => (string)$column->type(),
                 ]);
                 $c->quotedName = $this->quoteColumnName($c->name);
-
                 $this->extractType($c, $c->dbType);
+                $table->addColumn($c);
             }
         }
     }
