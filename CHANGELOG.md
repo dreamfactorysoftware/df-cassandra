@@ -3,6 +3,7 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
+## [0.12.2] - 2018-02-25
 ### Fixed
 - Fix column discovery 
 
@@ -84,7 +85,8 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ## 0.1.0 - 2016-08-15
 First official release of this library.
 
-[Unreleased]: https://github.com/dreamfactorysoftware/df-cassandra/compare/0.12.1...HEAD
+[Unreleased]: https://github.com/dreamfactorysoftware/df-cassandra/compare/0.12.2...HEAD
+[0.12.2]: https://github.com/dreamfactorysoftware/df-cassandra/compare/0.12.1...0.12.2
 [0.12.1]: https://github.com/dreamfactorysoftware/df-cassandra/compare/0.12.0...0.12.1
 [0.12.0]: https://github.com/dreamfactorysoftware/df-cassandra/compare/0.11.0...0.12.0
 [0.11.0]: https://github.com/dreamfactorysoftware/df-cassandra/compare/0.10.0...0.11.0
