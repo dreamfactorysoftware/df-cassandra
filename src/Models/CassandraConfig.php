@@ -38,23 +38,28 @@ class CassandraConfig extends BaseServiceConfigModel
                     'IP Address/Hostname of your Cassandra node. Note that you don’t have to specify the ' .
                     'addresses of all hosts in your cluster. Once the driver has established a connection to any ' .
                     'host, it will perform auto-discovery and connect to all hosts in the cluster';
+                    $schema['display'] = 'true';
                 break;
             case 'port':
                 $schema['label'] = 'Port';
                 $schema['default'] = 9042;
                 $schema['description'] = 'Cassandra Port number';
+                $schema['display'] = 'true';
                 break;
             case 'username':
                 $schema['label'] = 'Username';
                 $schema['description'] = 'Cassandra User';
+                $schema['display'] = 'true';
                 break;
             case 'password':
                 $schema['label'] = 'Password';
                 $schema['description'] = 'User Password';
+                $schema['display'] = 'true';
                 break;
             case 'keyspace':
                 $schema['label'] = 'Keyspace';
                 $schema['description'] = 'Keyspace/Namespace of your Cassandra tables';
+                $schema['display'] = 'true';
                 break;
             case 'options':
                 $schema['type'] = 'object';
