@@ -57,7 +57,7 @@ class CassandraConnection extends IlluminateConnection
      *
      * @return CassandraBuilder
      */
-    public function table($table)
+    public function table($table, $as = NULL)
     {
         $processor = $this->getPostProcessor();
         $grammar = $this->getQueryGrammar();
