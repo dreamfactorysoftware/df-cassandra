@@ -6,6 +6,7 @@ use DreamFactory\Core\Cassandra\Resources\Table;
 use DreamFactory\Core\Components\RequireExtensions;
 use DreamFactory\Core\Database\Services\BaseDbService;
 use Illuminate\Database\DatabaseManager;
+use Illuminate\Support\Arr;
 
 class Cassandra extends BaseDbService
 {
@@ -20,7 +21,7 @@ class Cassandra extends BaseDbService
         $prefix = '';
         $parts = ['hosts', 'port', 'username', 'keyspace'];
         foreach ($parts as $part) {
-            $prefix .= array_get($this->config, $part);
+            $prefix .= Arr::get($this->config, $part);
         }
 
         $this->setConfigBasedCachePrefix($prefix . ':');

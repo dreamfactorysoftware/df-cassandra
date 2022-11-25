@@ -19,6 +19,8 @@ use DreamFactory\Core\Utility\Session;
 use DreamFactory\Core\Enums\Verbs;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Str;
 
 class Table extends BaseDbTableResource
 {
@@ -29,11 +31,11 @@ class Table extends BaseDbTableResource
     {
         $record = static::validateAsArray($record, null, false, 'There are no fields in the record.');
 
-        $idFields = array_get($extras, ApiOptions::ID_FIELD);
-        $idTypes = array_get($extras, ApiOptions::ID_TYPE);
-        $related = array_get($extras, ApiOptions::RELATED);
+        $idFields = Arr::get($extras, ApiOptions::ID_FIELD);
+        $idTypes = Arr::get($extras, ApiOptions::ID_TYPE);
+        $related = Arr::get($extras, ApiOptions::RELATED);
         $allowRelatedDelete = array_get_bool($extras, ApiOptions::ALLOW_RELATED_DELETE);
-        $ssFilters = array_get($extras, 'ss_filters');
+        $ssFilters = Arr::get($extras, 'ss_filters');
 
         try {
             if (!$tableSchema = $this->parent->getTableSchema($table)) {
@@ -96,7 +98,7 @@ class Table extends BaseDbTableResource
             }
             // build filter string if necessary, add server-side filters if necessary
             $builder = $this->parent->getConnection()->table($tableSchema->internalName);
-            $ssFilters = array_get($extras, 'ss_filters');
+            $ssFilters = \Illuminate\Support\Arr::get($extras, 'ss_filters');
             $params = [];
             $serverFilter = $this->buildQueryStringFromData($ssFilters);
             if (!empty($serverFilter)) {
@@ -125,9 +127,9 @@ class Table extends BaseDbTableResource
             throw new BadRequestException("Filter for delete request can not be empty.");
         }
 
-        $idFields = array_get($extras, ApiOptions::ID_FIELD);
-        $idTypes = array_get($extras, ApiOptions::ID_TYPE);
-        $ssFilters = array_get($extras, 'ss_filters');
+        $idFields = Arr::get($extras, ApiOptions::ID_FIELD);
+        $idTypes = Arr::get($extras, ApiOptions::ID_TYPE);
+        $ssFilters = Arr::get($extras, 'ss_filters');
 
         try {
             if (!$tableSchema = $this->parent->getTableSchema($table)) {
@@ -158,7 +160,7 @@ class Table extends BaseDbTableResource
      */
     public function retrieveRecordsByFilter($table, $filter = null, $params = [], $extras = [])
     {
-        $ssFilters = array_get($extras, 'ss_filters');
+        $ssFilters = Arr::get($extras, 'ss_filters');
 
         try {
             $tableSchema = $this->parent->getTableSchema($table);
@@ -182,23 +184,21 @@ class Table extends BaseDbTableResource
 
     /**
      * @param              $table
-     * @param Builder      $builder
      * @param array        $extras
-     * @return int|array
      * @throws BadRequestException
      * @throws InternalServerErrorException
      * @throws NotFoundException
      * @throws RestException
      */
-    protected function runQuery($table, Builder $builder, $extras)
+    protected function runQuery($table, Builder $builder, $extras): int|array
     {
         $schema = $this->parent->getTableSchema($table);
         if (!$schema) {
             throw new NotFoundException("Table '$table' does not exist in the database.");
         }
 
-        $limit = intval(array_get($extras, ApiOptions::LIMIT, 0));
-        $offset = intval(array_get($extras, ApiOptions::OFFSET, 0));
+        $limit = intval(Arr::get($extras, ApiOptions::LIMIT, 0));
+        $offset = intval(Arr::get($extras, ApiOptions::OFFSET, 0));
         $countOnly = array_get_bool($extras, ApiOptions::COUNT_ONLY);
         $includeCount = array_get_bool($extras, ApiOptions::INCLUDE_COUNT);
 
@@ -225,9 +225,9 @@ class Table extends BaseDbTableResource
         $builder->select($select);
 
         // apply the rest of the parameters
-        $order = trim(array_get($extras, ApiOptions::ORDER));
+        $order = trim((string) Arr::get($extras, ApiOptions::ORDER));
         if (!empty($order)) {
-            if (false !== strpos($order, ';')) {
+            if (Str::contains($order, ';')) {
                 throw new BadRequestException('Invalid order by clause in request.');
             }
             $commas = explode(',', $order);
@@ -246,7 +246,7 @@ class Table extends BaseDbTableResource
                     break;
             }
         }
-        $group = trim(array_get($extras, ApiOptions::GROUP));
+        $group = trim((string) Arr::get($extras, ApiOptions::GROUP));
         if (!empty($group)) {
             $group = static::fieldsToArray($group);
             $groups = $this->parseGroupBy($schema, $group);
@@ -287,8 +287,6 @@ class Table extends BaseDbTableResource
     }
 
     /**
-     * @param TableSchema $schema
-     * @param Builder     $builder
      * @param array       $extras
      * @return Collection
      */
@@ -318,7 +316,6 @@ class Table extends BaseDbTableResource
      * ':name', in which case an associative array is expected,
      * for value substitution.
      *
-     * @param \Illuminate\Database\Query\Builder $builder
      * @param string | array                     $filter       SQL WHERE clause filter string
      * @param array                              $params       Array of substitution values
      * @param array                              $ss_filters   Server-side filters to apply
@@ -329,7 +326,7 @@ class Table extends BaseDbTableResource
      */
     protected function convertFilterToNative(
         Builder $builder,
-        $filter,
+        string|array $filter,
         $params = [],
         $ss_filters = [],
         $avail_fields = []
@@ -368,20 +365,20 @@ class Table extends BaseDbTableResource
      */
     protected function buildQueryStringFromData($filter_info)
     {
-        $filters = array_get($filter_info, 'filters');
+        $filters = Arr::get($filter_info, 'filters');
         if (empty($filters)) {
             return null;
         }
 
         $sql = '';
-        $combiner = array_get($filter_info, 'filter_op', DbLogicalOperators::AND_STR);
+        $combiner = Arr::get($filter_info, 'filter_op', DbLogicalOperators::AND_STR);
         foreach ($filters as $key => $filter) {
             if (!empty($sql)) {
                 $sql .= " $combiner ";
             }
 
-            $name = array_get($filter, 'name');
-            $op = strtoupper(array_get($filter, 'operator'));
+            $name = Arr::get($filter, 'name');
+            $op = strtoupper((string) Arr::get($filter, 'operator'));
             if (empty($name) || empty($op)) {
                 // log and bail
                 throw new InternalServerErrorException('Invalid server-side filter configuration detected.');
@@ -390,7 +387,7 @@ class Table extends BaseDbTableResource
             if (DbComparisonOperators::requiresNoValue($op)) {
                 $sql .= "($name $op)";
             } else {
-                $value = array_get($filter, 'value');
+                $value = Arr::get($filter, 'value');
                 $sql .= "($name $op $value)";
             }
         }
@@ -400,9 +397,7 @@ class Table extends BaseDbTableResource
 
     /**
      * @param string         $filter
-     * @param array          $out_params
      * @param ColumnSchema[] $fields_info
-     * @param array          $in_params
      *
      * @return string
      * @throws \DreamFactory\Core\Exceptions\BadRequestException
@@ -443,7 +438,7 @@ class Table extends BaseDbTableResource
         }
 
         $wrap = false;
-        if ((0 === strpos($filter, '(')) && ((strlen($filter) - 1) === strrpos($filter, ')'))) {
+        if ((str_starts_with($filter, '(')) && ((strlen($filter) - 1) === strrpos($filter, ')'))) {
             // remove unnecessary wrapping ()
             $filter = substr($filter, 1, -1);
             $wrap = true;
@@ -461,10 +456,10 @@ class Table extends BaseDbTableResource
         $sqlOperators = DbComparisonOperators::getParsingOrder();
         foreach ($sqlOperators as $sqlOp) {
             $paddedOp = static::padOperator($sqlOp);
-            if (false !== $pos = stripos($filter, $paddedOp)) {
+            if (false !== $pos = stripos($filter, (string) $paddedOp)) {
                 $field = trim(substr($filter, 0, $pos));
                 $negate = false;
-                if (false !== strpos($field, ' ')) {
+                if (Str::contains($field, ' ')) {
                     $parts = explode(' ', $field);
                     $partsCount = count($parts);
                     if (($partsCount > 1) &&
@@ -477,14 +472,14 @@ class Table extends BaseDbTableResource
                     }
                 }
                 /** @type ColumnSchema $info */
-                if (null === $info = array_get($fields_info, strtolower($field))) {
+                if (null === $info = Arr::get($fields_info, strtolower($field))) {
                     // This could be SQL injection attempt or bad field
                     throw new BadRequestException("Invalid or unparsable field in filter request: '$field'");
                 }
 
                 // make sure we haven't chopped off right side too much
-                $value = trim(substr($filter, $pos + strlen($paddedOp)));
-                if ((0 !== strpos($value, "'")) &&
+                $value = trim(substr($filter, $pos + strlen((string) $paddedOp)));
+                if ((!str_starts_with($value, "'")) &&
                     (0 !== $lpc = substr_count($value, '(')) &&
                     ($lpc !== $rpc = substr_count($value, ')'))
                 ) {
@@ -494,7 +489,7 @@ class Table extends BaseDbTableResource
                     $rightParen = preg_replace('/\)/', '', $rightParen, $lpc - $rpc);
                 }
                 if (DbComparisonOperators::requiresValueList($sqlOp)) {
-                    if ((0 === strpos($value, '(')) && ((strlen($value) - 1) === strrpos($value, ')'))) {
+                    if ((str_starts_with($value, '(')) && ((strlen($value) - 1) === strrpos($value, ')'))) {
                         // remove wrapping ()
                         $value = substr($value, 1, -1);
                         $parsed = [];
@@ -540,18 +535,14 @@ class Table extends BaseDbTableResource
     }
 
     /**
-     * @param mixed        $value
-     * @param ColumnSchema $info
-     * @param array        $out_params
-     * @param array        $in_params
      *
      * @return int|null|string
      * @throws BadRequestException
      */
-    protected function parseFilterValue($value, ColumnSchema $info, array &$out_params, array $in_params = [])
+    protected function parseFilterValue(mixed $value, ColumnSchema $info, array &$out_params, array $in_params = [])
     {
         // if a named replacement parameter, un-name it because Laravel can't handle named parameters
-        if (is_array($in_params) && (0 === strpos($value, ':'))) {
+        if (is_array($in_params) && (str_starts_with((string) $value, ':'))) {
             if (array_key_exists($value, $in_params)) {
                 $value = $in_params[$value];
             }
@@ -563,7 +554,7 @@ class Table extends BaseDbTableResource
                 (0 === strcmp('"' . trim($value, '"') . '"', $value))
             ) {
                 $value = substr($value, 1, -1);
-            } elseif ((0 === strpos($value, '(')) && ((strlen($value) - 1) === strrpos($value, ')'))) {
+            } elseif ((str_starts_with($value, '(')) && ((strlen($value) - 1) === strrpos($value, ')'))) {
                 // function call
                 return $value;
             }
@@ -617,10 +608,8 @@ class Table extends BaseDbTableResource
 
     /**
      * @param ColumnSchema $field
-     *
-     * @return \Illuminate\Database\Query\Expression|string
      */
-    protected function parseFieldForSelect($field)
+    protected function parseFieldForSelect($field): \Illuminate\Database\Query\Expression|string
     {
         if ($function = $field->getDbFunction(DbFunctionUses::SELECT)) {
             return $this->parent->getConnection()->raw($function . ' AS ' . $field->getName(true, true));
@@ -640,7 +629,7 @@ class Table extends BaseDbTableResource
             return [];
         }
 
-        return (!is_array($fields)) ? array_map('trim', explode(',', trim($fields, ','))) : $fields;
+        return (!is_array($fields)) ? array_map('trim', explode(',', trim((string) $fields, ','))) : $fields;
     }
 
     /**
@@ -653,10 +642,10 @@ class Table extends BaseDbTableResource
      */
     protected function parseSelect($schema, $extras)
     {
-        $fields = array_get($extras, ApiOptions::FIELDS);
+        $fields = Arr::get($extras, ApiOptions::FIELDS);
         if (empty($fields)) {
             // minimally return id fields
-            $idFields = array_get($extras, ApiOptions::ID_FIELD);
+            $idFields = Arr::get($extras, ApiOptions::ID_FIELD);
             if (empty($idFields)) {
                 $idFields = $schema->primaryKey;
             }
@@ -677,7 +666,7 @@ class Table extends BaseDbTableResource
                 }
             }
         } else {
-            $related = array_get($extras, ApiOptions::RELATED);
+            $related = Arr::get($extras, ApiOptions::RELATED);
             $related = static::fieldsToArray($related);
             if (!empty($related) || $schema->fetchRequiresRelations) {
                 // add any required relationship mapping fields
@@ -727,7 +716,7 @@ class Table extends BaseDbTableResource
                 if ($fieldInfo = $schema->getColumn($field, true)) {
                     $outArray[] = $fieldInfo->name;
                 } else {
-                    if (false !== strpos($field, ';')) {
+                    if (Str::contains((string) $field, ';')) {
                         throw new BadRequestException('Invalid group by clause in request.');
                     }
                     $outArray[] = DB::raw($field); // todo better checks on group by clause
@@ -760,7 +749,7 @@ class Table extends BaseDbTableResource
         } else {
             if (false !== $requested_fields = static::validateAsArray($requested_fields, ',')) {
                 foreach ($requested_fields as $field) {
-                    $ndx = strtolower($field);
+                    $ndx = strtolower((string) $field);
                     if (isset($fields_info[$ndx])) {
                         $idsInfo[] = $fields_info[$ndx];
                     }
@@ -808,12 +797,12 @@ class Table extends BaseDbTableResource
             }
         }
 
-        $ssFilters = array_get($extras, 'ss_filters');
-        $updates = array_get($extras, 'updates');
-        $idFields = array_get($extras, 'id_fields');
+        $ssFilters = Arr::get($extras, 'ss_filters');
+        $updates = Arr::get($extras, 'updates');
+        $idFields = Arr::get($extras, 'id_fields');
         $needToIterate = ($single || !$continue || (1 < count($this->tableIdsInfo)));
 
-        $related = array_get($extras, 'related');
+        $related = Arr::get($extras, 'related');
         $requireMore = array_get_bool($extras, 'require_more') || !empty($related);
 
         $builder = $dbConn->table($this->transactionTableSchema->internalName);
@@ -822,10 +811,10 @@ class Table extends BaseDbTableResource
             if (is_array($id)) {
                 $match = $id;
                 foreach ($idFields as $name) {
-                    $builder->where($name, array_get($id, $name));
+                    $builder->where($name, Arr::get($id, $name));
                 }
             } else {
-                $name = array_get($idFields, 0);
+                $name = Arr::get($idFields, 0);
                 $match[$name] = $id;
                 $builder->where($name, $id);
             }
@@ -862,8 +851,8 @@ class Table extends BaseDbTableResource
                 if (is_string($id) && $idName &&
                     ((0 === strcasecmp($id, 'uuid()')) || (0 === strcasecmp($id, 'now()')))
                 ) {
-                    if ($newId = array_get($parsed, $idName)) {
-                        switch (get_class($newId)) {
+                    if ($newId = Arr::get($parsed, $idName)) {
+                        switch ($newId::class) {
                             case 'Cassandra\Uuid':
                             case 'Cassandra\Timeuuid': // construct( int $seconds )
                                 $id = $newId->uuid();
@@ -886,7 +875,7 @@ class Table extends BaseDbTableResource
                 }
 
                 // remove id from record
-                $record = array_except($record, array_keys($match));
+                $record = Arr::except($record, array_keys($match));
 
                 $parsed = $this->parseRecord($record, $this->tableFieldsInfo, $ssFilters, true);
                 if (!empty($parsed)) {
@@ -989,9 +978,9 @@ class Table extends BaseDbTableResource
             return null;
         }
 
-        $updates = array_get($extras, 'updates');
-        $ssFilters = array_get($extras, 'ss_filters');
-        $related = array_get($extras, 'related');
+        $updates = Arr::get($extras, 'updates');
+        $ssFilters = Arr::get($extras, 'ss_filters');
+        $related = Arr::get($extras, 'related');
         $requireMore = array_get_bool($extras, 'require_more') || !empty($related);
 
         $builder = $dbConn->table($this->transactionTableSchema->internalName);
@@ -1006,7 +995,7 @@ class Table extends BaseDbTableResource
             if (is_array($this->batchRecords[0])) {
                 $temp = [];
                 foreach ($this->batchRecords as $record) {
-                    $temp[] = array_get($record, $idName->getName(true));
+                    $temp[] = Arr::get($record, $idName->getName(true));
                 }
 
                 $builder->whereIn($idName->name, $temp);
@@ -1078,7 +1067,7 @@ class Table extends BaseDbTableResource
                         foreach ($this->batchIds as $index => $id) {
                             $found = false;
                             foreach ($result as $record) {
-                                if ($id == array_get($record, $idName->getName(true))) {
+                                if ($id == Arr::get($record, $idName->getName(true))) {
                                     $out[$index] = $record;
                                     $found = true;
                                     break;
@@ -1110,7 +1099,7 @@ class Table extends BaseDbTableResource
                         foreach ($this->batchIds as $index => $id) {
                             $found = false;
                             foreach ($result as $record) {
-                                if ($id == array_get($record, $idName->getName(true))) {
+                                if ($id == Arr::get($record, $idName->getName(true))) {
                                     $out[$index] = $record;
                                     $found = true;
                                     break;
