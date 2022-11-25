@@ -5,14 +5,24 @@ namespace DreamFactory\Core\Cassandra\Database\Schema;
 use DreamFactory\Core\Cassandra\Database\CassandraConnection;
 use DreamFactory\Core\Database\Schema\ColumnSchema;
 use DreamFactory\Core\Database\Schema\TableSchema;
+use DreamFactory\Core\Enums\DbResourceTypes;
 use DreamFactory\Core\Enums\DbSimpleTypes;
 use DreamFactory\Core\Exceptions\BadRequestException;
 use Ramsey\Uuid\Uuid;
+use Illuminate\Support\Arr;
 
 class Schema extends \DreamFactory\Core\Database\Components\Schema
 {
     /** @var  CassandraConnection */
     protected $connection;
+
+    public function getSupportedResourceTypes()
+    {
+        return [
+            DbResourceTypes::TYPE_TABLE,
+            DbResourceTypes::TYPE_TABLE_FIELD,
+        ];
+    }
 
     /**
      * Quotes a string value for use in a query.
@@ -75,20 +85,19 @@ class Schema extends \DreamFactory\Core\Database\Components\Schema
 
         $names = [];
         foreach ($tables as $table) {
-            $name = array_get($table, 'table_name');
+            $name = Arr::get($table, 'table_name');
             $resourceName = $name;
             $internalName = $schemaName . '.' . $resourceName;
             $name = $resourceName;
             $quotedName = $this->quoteTableName($schemaName) . '.' . $this->quoteTableName($resourceName);;
             $settings = compact('schemaName', 'resourceName', 'name', 'internalName', 'quotedName');
-            $names[strtolower($name)] = new TableSchema($settings);
+            $names[strtolower((string) $name)] = new TableSchema($settings);
         }
 
         return $names;
     }
 
     /**
-     * @param array $info
      *
      * @return string
      * @throws \Exception
@@ -142,15 +151,15 @@ CQL;
      */
     public function alterColumn($table, $column, $definition)
     {
-        if (null !== array_get($definition, 'new_name') &&
-            array_get($definition, 'name') !== array_get($definition, 'new_name')
+        if (null !== Arr::get($definition, 'new_name') &&
+            Arr::get($definition, 'name') !== \Illuminate\Support\Arr::get($definition, 'new_name')
         ) {
             $cql = 'ALTER TABLE ' .
                 $table .
                 ' RENAME ' .
                 $this->quoteColumnName($column) .
                 ' TO ' .
-                $this->quoteColumnName(array_get($definition, 'new_name'));
+                $this->quoteColumnName(Arr::get($definition, 'new_name'));
         } else {
             $cql = 'ALTER TABLE ' .
                 $table .
@@ -177,6 +186,83 @@ CQL;
         return false;
     }
 
+    protected function translateSimpleColumnTypes(array &$info)
+    {
+        // override this in each schema class
+        $type = (isset($info['type'])) ? $info['type'] : null;
+        switch ($type) {
+            // some types need massaging, some need other required properties
+            case 'pk':
+            case DbSimpleTypes::TYPE_ID:
+                $info['type'] = 'int';
+                $info['allow_null'] = false;
+                $info['auto_increment'] = true;
+                $info['is_primary_key'] = true;
+                break;
+
+            case 'fk':
+            case DbSimpleTypes::TYPE_REF:
+                $info['type'] = 'int';
+                $info['is_foreign_key'] = true;
+                // check foreign tables
+                break;
+
+            case DbSimpleTypes::TYPE_TIMESTAMP_ON_CREATE:
+            case DbSimpleTypes::TYPE_TIMESTAMP_ON_UPDATE:
+                $info['type'] = 'timestamp';
+                $default = (isset($info['default'])) ? $info['default'] : null;
+                if (!isset($default)) {
+                    $default = 'CURRENT_TIMESTAMP';
+                    $info['default'] = ['expression' => $default];
+                }
+                break;
+
+            case DbSimpleTypes::TYPE_USER_ID:
+            case DbSimpleTypes::TYPE_USER_ID_ON_CREATE:
+            case DbSimpleTypes::TYPE_USER_ID_ON_UPDATE:
+                $info['type'] = 'int';
+                break;
+
+            case DbSimpleTypes::TYPE_BOOLEAN:
+                $info['type'] = 'boolean';
+                // $info['type_extras'] = '(1)';
+                $default = (isset($info['default'])) ? $info['default'] : null;
+                if (isset($default)) {
+                    // convert to bit 0 or 1, where necessary
+                    $info['default'] = (int)filter_var($default, FILTER_VALIDATE_BOOLEAN);
+                }
+                break;
+
+            case DbSimpleTypes::TYPE_MONEY:
+                $info['type'] = 'decimal';
+                $info['type_extras'] = '(19,4)';
+                $default = (isset($info['default'])) ? $info['default'] : null;
+                if (isset($default)) {
+                    $info['default'] = floatval($default);
+                }
+                break;
+
+            case DbSimpleTypes::TYPE_STRING:
+                $fixed =
+                    (isset($info['fixed_length'])) ? filter_var($info['fixed_length'], FILTER_VALIDATE_BOOLEAN) : false;
+                $national =
+                    (isset($info['supports_multibyte'])) ? filter_var($info['supports_multibyte'],
+                        FILTER_VALIDATE_BOOLEAN) : false;
+                if ($fixed) {
+                    $info['type'] = ($national) ? 'nchar' : 'char';
+                } elseif ($national) {
+                    $info['type'] = 'nvarchar';
+                } else {
+                    $info['type'] = 'varchar';
+                }
+                break;
+
+            case DbSimpleTypes::TYPE_BINARY:
+                $info['type'] = 'blob';
+                break;
+        }
+    }
+
     public function typecastToClient($value, $field_info, $allow_null = true)
     {
         return parent::typecastToClient($this->unwrapNativeType($value), $field_info, $allow_null);
@@ -199,7 +285,7 @@ CQL;
     {
         // handle object types returned by driver
         if (is_object($value)) {
-            switch ($cassClass = get_class($value)) {
+            switch ($cassClass = $value::class) {
                 case 'Cassandra\Uuid': // constructs with same generated string
                     $value = $value->uuid();
                     break;
@@ -218,10 +304,10 @@ CQL;
                     // Their toDateTime drops millisecond accuracy, will add it back
                     if (version_compare(PHP_VERSION, '7.0.0', '>=')) {
                         $value = $value->toDateTime()->format('Y-m-d H:i:s.vO'); // milliseconds best accuracy
-                        $value = str_replace('.000', $add, $value);
+                        $value = str_replace('.000', $add, (string) $value);
                     } else {
                         $value = $value->toDateTime()->format('Y-m-d H:i:s.uO');
-                        $value = str_replace('.000000', $add, $value);
+                        $value = str_replace('.000000', $add, (string) $value);
                     }
                     break;
                 case 'Cassandra\Date': // construct ( int $seconds)
@@ -233,7 +319,7 @@ CQL;
                     // create DateTime using seconds and add the remainder nanoseconds
                     $datetime = new \DateTime('@' . $value->seconds());
                     $nanoseconds = (int)(string)$value; // nanoseconds
-                    $remainder = $nanoseconds % 1000000000;
+                    $remainder = $nanoseconds % 1_000_000_000;
                     $value = $datetime->format('H:i:s') . '.' . str_pad($remainder, 9, '0', STR_PAD_LEFT);
                     break;
                 case 'Cassandra\Blob':
@@ -304,11 +390,11 @@ CQL;
     {
         $simpleType = $type;
         $extra = null;
-        if (false !== $pos = strpos($type, '<')) {
-            $simpleType = substr($type, 0, $pos);
-            $extra = substr($type, $pos + 1, -1); // strip outer <>
+        if (false !== $pos = strpos((string) $type, '<')) {
+            $simpleType = substr((string) $type, 0, $pos);
+            $extra = substr((string) $type, $pos + 1, -1); // strip outer <>
         }
-        switch (strtolower($simpleType)) {
+        switch (strtolower((string) $simpleType)) {
             // datetime and such
             case DbSimpleTypes::TYPE_DATE:
                 if (is_numeric($value)) {
@@ -321,10 +407,10 @@ CQL;
                 if (is_numeric($value)) {
                     return new \Cassandra\Time($value); // must be nanoseconds
                 } else {
-                    if (false !== $pos = strpos($value, '.')) {
+                    if (false !== $pos = strpos((string) $value, '.')) {
                         // string may include nanoseconds
-                        $seconds = substr($value, 0, $pos);
-                        $nano = substr($value, $pos + 1);
+                        $seconds = substr((string) $value, 0, $pos);
+                        $nano = substr((string) $value, $pos + 1);
                         $seconds = strtotime('1970-01-01 ' . $seconds);
                         $nanoseconds = $seconds . str_pad($nano, 9, '0', STR_PAD_RIGHT);
 
@@ -337,15 +423,15 @@ CQL;
             case DbSimpleTypes::TYPE_TIMESTAMP:
                 if (is_numeric($value)) {
                     return new \Cassandra\Timestamp((int)$value); // must be seconds
-                } elseif (empty($value) || (0 === strcasecmp($value, 'now()'))) {
+                } elseif (empty($value) || (0 === strcasecmp((string) $value, 'now()'))) {
                     return new \Cassandra\Timestamp();
-                } elseif (false !== $seconds = strtotime($value)) {
+                } elseif (false !== $seconds = strtotime((string) $value)) {
                     // may have lost millisecond precision here, see if we can make up for it
                     $microseconds = 0;
-                    if (false !== $pos = strpos($value, '.')) {
-                        $len = (false !== $plus = strpos($value, '+')) ? $plus - ($pos + 1) : null;
-                        $micro = '0.' . substr($value, $pos + 1, $len);
-                        $microseconds = floatval($micro) * 1000000;
+                    if (false !== $pos = strpos((string) $value, '.')) {
+                        $len = (false !== $plus = strpos((string) $value, '+')) ? $plus - ($pos + 1) : null;
+                        $micro = '0.' . substr((string) $value, $pos + 1, $len);
+                        $microseconds = floatval($micro) * 1_000_000;
                     }
 
                     return new \Cassandra\Timestamp($seconds, $microseconds);
@@ -354,16 +440,16 @@ CQL;
             case DbSimpleTypes::TYPE_TIME_UUID:
                 if (is_numeric($value)) {
                     return new \Cassandra\Timeuuid((int)$value); // must be seconds
-                } elseif (empty($value) || (0 === strcasecmp($value, 'now()'))) {
+                } elseif (empty($value) || (0 === strcasecmp((string) $value, 'now()'))) {
                     return new \Cassandra\Timeuuid();
-                } elseif (false !== $seconds = strtotime($value)) {
+                } elseif (false !== $seconds = strtotime((string) $value)) {
                     return new \Cassandra\Timeuuid($seconds);
                 } else {
                     throw new BadRequestException('TIME UUID type can only be set with null, or seconds, or valid formatted time.');
                 }
                 break;
             case DbSimpleTypes::TYPE_UUID:
-                if (empty($value) || (0 === strcasecmp($value, 'uuid()'))) {
+                if (empty($value) || (0 === strcasecmp((string) $value, 'uuid()'))) {
                     return new \Cassandra\Uuid(Uuid::uuid4());
                 } else {
                     return new \Cassandra\Uuid($value);

@@ -14,9 +14,7 @@ class ServiceProvider extends \Illuminate\Support\ServiceProvider
     public function register()
     {
         $this->app->resolving('db', function (DatabaseManager $db) {
-            $db->extend('cassandra', function ($config) {
-                return new CassandraConnection($config);
-            });
+            $db->extend('cassandra', fn($config) => new CassandraConnection($config));
         });
 
         // Add our service types.
@@ -28,9 +26,7 @@ class ServiceProvider extends \Illuminate\Support\ServiceProvider
                     'description'     => 'Database service for Cassandra connections.',
                     'group'           => ServiceTypeGroups::DATABASE,
                     'config_handler'  => CassandraConfig::class,
-                    'factory'         => function ($config) {
-                        return new Cassandra($config);
-                    },
+                    'factory'         => fn($config) => new Cassandra($config),
                 ])
             );
         });

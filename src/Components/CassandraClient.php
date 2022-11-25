@@ -2,6 +2,7 @@
 namespace DreamFactory\Core\Cassandra\Components;
 
 use DreamFactory\Core\Exceptions\InternalServerErrorException;
+use Illuminate\Support\Arr;
 
 class CassandraClient
 {
@@ -17,18 +18,17 @@ class CassandraClient
     /**
      * CassandraClient constructor.
      *
-     * @param array $config
      *
      * @throws \DreamFactory\Core\Exceptions\InternalServerErrorException
      */
     public function __construct(array $config)
     {
-        $hosts = array_get($config, 'hosts');
-        $port = array_get($config, 'port', 9042);
-        $keyspace = array_get($config, 'keyspace');
-        $username = array_get($config, 'username');
-        $password = array_get($config, 'password');
-        $ssl = $this->getSSLBuilder(array_get($config, 'options'));
+        $hosts = Arr::get($config, 'hosts');
+        $port = Arr::get($config, 'port', 9042);
+        $keyspace = Arr::get($config, 'keyspace');
+        $username = Arr::get($config, 'username');
+        $password = Arr::get($config, 'password');
+        $ssl = $this->getSSLBuilder(Arr::get($config, 'options'));
 
         if (empty($hosts)) {
             throw new InternalServerErrorException('No Cassandra host(s) provided in configuration.');
@@ -52,8 +52,13 @@ class CassandraClient
         }
 
         $this->session = $cluster->build()->connect($keyspace);
-        $this->schema = $this->session->schema();
-        $this->keyspace = $this->schema->keyspace($keyspace);
+        $this->schema = $this->session->schema();        
+        $ks = $this->schema->keyspace($keyspace);
+        if ($ks === false) {
+            throw new \InvalidArgumentException("Keyspace $keyspace not found for cassandra connection");
+        } else {
+            $this->keyspace = $ks;
+        }
     }
 
     /**
@@ -71,10 +76,10 @@ class CassandraClient
         }
 
         $ssl = \Cassandra::ssl();
-        $serverCert = array_get($config, 'server_cert_path');
-        $clientCert = array_get($config, 'client_cert_path');
-        $privateKey = array_get($config, 'private_key_path');
-        $passPhrase = array_get($config, 'key_pass_phrase');
+        $serverCert = Arr::get($config, 'server_cert_path');
+        $clientCert = Arr::get($config, 'client_cert_path');
+        $privateKey = Arr::get($config, 'private_key_path');
+        $passPhrase = Arr::get($config, 'key_pass_phrase');
 
         if (!empty($serverCert) && !empty($clientCert)) {
             if (empty($privateKey)) {
@@ -90,7 +95,7 @@ class CassandraClient
             return $ssl->withVerifyFlags(\Cassandra::VERIFY_PEER_CERT)
                 ->withTrustedCerts(getenv('SERVER_CERT'))
                 ->build();
-        } elseif (true === boolval(array_get($config, 'ssl', array_get($config, 'tls', false)))) {
+        } elseif (true === boolval(Arr::get($config, 'ssl', \Illuminate\Support\Arr::get($config, 'tls', false)))) {
             return $ssl->withVerifyFlags(\Cassandra::VERIFY_NONE)
                 ->build();
         } else {
@@ -160,7 +165,6 @@ class CassandraClient
 
     /**
      * @param \Cassandra\SimpleStatement $statement
-     * @param array                      $options
      *
      * @return \Cassandra\Rows
      */
@@ -175,7 +179,6 @@ class CassandraClient
 
     /**
      * @param string $cql
-     * @param array  $options
      *
      * @return array
      */
@@ -197,7 +200,7 @@ class CassandraClient
      */
     protected function extractPaginationInfo(& $cql)
     {
-        $words = explode(' ', $cql);
+        $words = explode(' ', (string) $cql);
         $limit = 0;
         $offset = 0;
         $limitKey = null;
@@ -226,14 +229,13 @@ class CassandraClient
 
     /**
      * @param \Cassandra\Rows $rows
-     * @param array           $options
      *
      * @return array
      */
     public static function rowsToArray($rows, array $options = [])
     {
-        $limit = array_get($options, 'limit', 0);
-        $offset = array_get($options, 'offset', 0);
+        $limit = Arr::get($options, 'limit', 0);
+        $offset = Arr::get($options, 'offset', 0);
 
         $array = [];
         if ($offset > 0) {
