@@ -15,6 +15,7 @@ class CassandraConnection extends IlluminateConnection
 
     public function __construct(array $config)
     {
+        $this->config = $config;
         $this->client = new CassandraClient($config);
         $this->useDefaultPostProcessor();
         $this->useDefaultQueryGrammar();
@@ -33,7 +34,8 @@ class CassandraConnection extends IlluminateConnection
      */
     public function getDefaultQueryGrammar()
     {
-        return new CassandraGrammar();
+        // Laravel 13: Query Grammar constructor requires the Connection instance.
+        return new CassandraGrammar($this);
     }
 
     /**
@@ -71,10 +73,11 @@ class CassandraConnection extends IlluminateConnection
      * @param string $query
      * @param array  $bindings
      * @param bool   $useReadPdo
+     * @param array  $fetchUsing
      *
      * @return mixed
      */
-    public function select($query, $bindings = [], $useReadPdo = true)
+    public function select($query, $bindings = [], $useReadPdo = true, array $fetchUsing = [])
     {
         $query .= ' ALLOW FILTERING';
 
