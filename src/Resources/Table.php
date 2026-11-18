@@ -25,6 +25,68 @@ use Illuminate\Support\Str;
 class Table extends BaseDbTableResource
 {
     /**
+     * Validate a column identifier for safe interpolation into CQL.
+     * Cassandra identifiers are alphanumeric + underscore (case-sensitive
+     * when quoted with double quotes, but the legacy unquoted form is what
+     * the server-side filter syntax uses).
+     *
+     * @throws \DreamFactory\Core\Exceptions\InternalServerErrorException
+     */
+    public static function assertSafeCqlIdentifier(string $value, string $context = 'identifier'): void
+    {
+        if ($value === '' || preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $value) !== 1) {
+            throw new InternalServerErrorException(
+                "Invalid CQL {$context}: must match identifier syntax."
+            );
+        }
+    }
+
+    /**
+     * Validate a CQL comparison operator against the known list.
+     *
+     * @throws \DreamFactory\Core\Exceptions\InternalServerErrorException
+     */
+    public static function assertSafeCqlComparisonOperator(string $op): void
+    {
+        $allowed = [
+            '=', '!=', '<>', '<', '<=', '>', '>=',
+            'IN', 'CONTAINS', 'CONTAINS KEY',
+            'IS NULL', 'IS NOT NULL',
+            'LIKE', 'NOT LIKE',
+        ];
+        if (!in_array(strtoupper($op), array_map('strtoupper', $allowed), true)) {
+            throw new InternalServerErrorException(
+                "Invalid CQL comparison operator: {$op}"
+            );
+        }
+    }
+
+    /**
+     * Validate a value-position fragment in the server-side filter to
+     * reject CQL injection metacharacters. Allow plain literals (numbers,
+     * single-quoted strings, identifier-like values) but reject
+     * semicolons, comment markers, and quote-breakout patterns.
+     *
+     * @throws \DreamFactory\Core\Exceptions\InternalServerErrorException
+     */
+    public static function assertSafeCqlFilterValue($value): void
+    {
+        if ($value === null || is_int($value) || is_float($value) || is_bool($value)) {
+            return;
+        }
+        if (!is_string($value)) {
+            throw new InternalServerErrorException(
+                'CQL filter value must be a scalar.'
+            );
+        }
+        if (preg_match('/[;`\\\\]|--|\/\*|\*\//', $value) === 1) {
+            throw new InternalServerErrorException(
+                'CQL filter value contains forbidden characters.'
+            );
+        }
+    }
+
+    /**
      * {@inheritdoc}
      */
     public function updateRecordsByFilter($table, $record, $filter = null, $params = [], $extras = [])
@@ -384,10 +446,18 @@ class Table extends BaseDbTableResource
                 throw new InternalServerErrorException('Invalid server-side filter configuration detected.');
             }
 
+            // The server-side filter is admin-config but still flows
+            // unescaped into raw CQL. Validate identifier shape on $name
+            // and reject CQL/SQL metacharacters in $value to remove the
+            // injection foothold even from a compromised admin account.
+            self::assertSafeCqlIdentifier($name, 'filter column');
+            self::assertSafeCqlComparisonOperator($op);
+
             if (DbComparisonOperators::requiresNoValue($op)) {
                 $sql .= "($name $op)";
             } else {
                 $value = Arr::get($filter, 'value');
+                self::assertSafeCqlFilterValue($value);
                 $sql .= "($name $op $value)";
             }
         }
